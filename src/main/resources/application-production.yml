@@ -1,0 +1,18 @@
+spring:
+  config:
+    activate:
+      on-profile: production
+
+services:
+  user:
+    base-url: ${USER_SERVICE_URL}
+  business:
+    base-url: ${BUSINESS_SERVICE_URL}
+  shop:
+    base-url: ${SHOP_SERVICE_URL}
+  product:
+    base-url: ${PRODUCT_SERVICE_URL}
+  inventory:
+    base-url: ${INVENTORY_SERVICE_URL}
+  order:
+    base-url: ${ORDER_SERVICE_URL}

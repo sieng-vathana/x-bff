@@ -1,0 +1,18 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+
+services:
+  user:
+    base-url: http://127.0.0.1:7445/internal/users
+  business:
+    base-url: http://127.0.0.1:8086
+  shop:
+    base-url: http://127.0.0.1:8087
+  product:
+    base-url: http://127.0.0.1:8082
+  inventory:
+    base-url: http://127.0.0.1:8085
+  order:
+    base-url: http://127.0.0.1:8083

@@ -1,94 +1,131 @@
 package com.bff_vyntra.controller;
 
 import com.bff_vyntra.dto.AuthRequest;
-import com.bff_vyntra.service.ServiceClientFactory;
-import com.bff_vyntra.utils.VyntraUtil;
-import com.fasterxml.jackson.databind.JsonNode;
-import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
+import com.bff_vyntra.dto.AuthResponse;
+import com.bff_vyntra.dto.RefreshTokenRequest;
+import com.bff_vyntra.security.AuthCookieSupport;
+import com.bff_vyntra.security.ClientChannel;
+import com.bff_vyntra.security.JwtUtils;
+import com.bff_vyntra.service.AuthenticationService;
+import com.sharedlib.response.ApiResponse;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 @RestController
-@RequestMapping({"/api/v1/auth"})
-@RequiredArgsConstructor
+@RequestMapping("/api/v1/auth")
 public class AuthenticationController {
 
-    private final ServiceClientFactory clientFactory;
-    private WebClient authClient;
-    private WebClient userClient;
+    private final AuthenticationService authenticationService;
+    private final JwtUtils jwtUtils;
 
-    @PostConstruct
-    void init() {
-        this.authClient = clientFactory.forService("/api/v1/auth");
-        this.userClient = clientFactory.forService("/api/v1/users");
+    public AuthenticationController(AuthenticationService authenticationService, JwtUtils jwtUtils) {
+        this.authenticationService = authenticationService;
+        this.jwtUtils = jwtUtils;
     }
 
+    /**
+     * Dual-channel login.
+     * <ul>
+     *   <li>mobile (default): tokens returned in JSON body; no auth cookies</li>
+     *   <li>web: HttpOnly access + refresh cookies; tokens stripped from JSON body</li>
+     * </ul>
+     */
     @PostMapping("/login")
-    public Mono<ResponseEntity<?>> login(
-            @RequestBody AuthRequest request,
-            @RequestHeader(value = "X-Client-Type", defaultValue = "mobile") String clientType) {
-        return authClient.post()
-                .uri("/login")
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(String.class)
-                .map(responseStr -> {
-                    ResponseEntity<?> responseEntity = VyntraUtil.toJsonResponse(responseStr);
-                    if ("web".equalsIgnoreCase(clientType) && responseEntity.getBody() instanceof JsonNode) {
-                        JsonNode jsonNode = (JsonNode) responseEntity.getBody();
-                        if (jsonNode.has("data") && jsonNode.get("data").has("accessToken")) {
-                            String token = jsonNode.get("data").get("accessToken").asText();
-                            org.springframework.http.ResponseCookie cookie = org.springframework.http.ResponseCookie.from("access_token", token)
-                                    .httpOnly(true)
-                                    .secure(false) // Set to true in production with HTTPS
-                                    .path("/")
-                                    .maxAge(3600)
-                                    .build();
-                            return ResponseEntity.ok()
-                                    .header(org.springframework.http.HttpHeaders.SET_COOKIE, cookie.toString())
-                                    .body(responseEntity.getBody());
-                        }
-                    }
-                    return responseEntity;
-                });
+    public Mono<ResponseEntity<ApiResponse<AuthResponse>>> login(
+            @Valid @RequestBody AuthRequest request,
+            @RequestHeader(value = ClientChannel.HEADER_NAME, defaultValue = "mobile") String clientType,
+            ServerWebExchange exchange) {
+        ClientChannel channel = ClientChannel.fromHeader(clientType);
+        return authenticationService.authenticate(request, channel)
+                .map(response -> buildAuthResponse(response, channel, exchange));
     }
 
+    /**
+     * Dual-channel refresh.
+     * Mobile: send {@code refreshToken} in JSON body.
+     * Web: omit body (or leave empty) and send the {@code refresh_token} cookie.
+     * Query-string refresh tokens are no longer accepted.
+     */
     @PostMapping("/refresh")
-    public Mono<ResponseEntity<?>> refresh(@RequestParam String refreshToken) {
-        return authClient.post()
-                .uri(uriBuilder -> uriBuilder.path("/refresh").queryParam("refreshToken", refreshToken).build())
-                .retrieve()
-                .bodyToMono(String.class)
-                .map(VyntraUtil::toJsonResponse);
+    public Mono<ResponseEntity<ApiResponse<AuthResponse>>> refresh(
+            @RequestBody(required = false) RefreshTokenRequest body,
+            @RequestHeader(value = ClientChannel.HEADER_NAME, defaultValue = "mobile") String clientType,
+            ServerWebExchange exchange) {
+        ClientChannel channel = ClientChannel.fromHeader(clientType);
+        String refreshToken = resolveRefreshToken(body, exchange.getRequest());
+        return authenticationService.refresh(refreshToken, channel)
+                .map(response -> buildAuthResponse(response, channel, exchange));
     }
 
-    @GetMapping("/user/{username}/business")
-    public Mono<ResponseEntity<?>> getBusinessData(@PathVariable String username) {
-        return userClient.get()
-                .uri("/user/{username}/business", username)
-                .retrieve()
-                .bodyToMono(String.class)
-                .map(VyntraUtil::toJsonResponse);
+    /**
+     * Clears web auth cookies. Mobile clients should discard local tokens after calling this.
+     */
+    @PostMapping("/logout")
+    public Mono<ResponseEntity<ApiResponse<Void>>> logout(ServerWebExchange exchange) {
+        ServerHttpRequest request = exchange.getRequest();
+        ServerHttpResponse response = exchange.getResponse();
+        response.addCookie(AuthCookieSupport.clearAccessCookie(request));
+        response.addCookie(AuthCookieSupport.clearRefreshCookie(request));
+        return Mono.just(ResponseEntity.ok(ApiResponse.success(200, "Logged out", null)));
     }
 
-    @GetMapping("/user/{username}/store")
-    public Mono<ResponseEntity<?>> getStoreData(@PathVariable String username) {
-        return userClient.get()
-                .uri("/user/{username}/store", username)
-                .retrieve()
-                .bodyToMono(String.class)
-                .map(VyntraUtil::toJsonResponse);
+    private String resolveRefreshToken(RefreshTokenRequest body, ServerHttpRequest request) {
+        if (body != null && StringUtils.hasText(body.getRefreshToken())) {
+            return body.getRefreshToken().trim();
+        }
+        org.springframework.http.HttpCookie cookie =
+                request.getCookies().getFirst(AuthCookieSupport.REFRESH_COOKIE);
+        if (cookie != null && StringUtils.hasText(cookie.getValue())) {
+            return cookie.getValue();
+        }
+        return null;
     }
 
-    @GetMapping("/user/{username}/permissions")
-    public Mono<ResponseEntity<?>> getPermissions(@PathVariable String username) {
-        return userClient.get()
-                .uri("/user/{username}/permissions", username)
-                .retrieve()
-                .bodyToMono(String.class)
-                .map(VyntraUtil::toJsonResponse);
+    private ResponseEntity<ApiResponse<AuthResponse>> buildAuthResponse(
+            ApiResponse<AuthResponse> response,
+            ClientChannel channel,
+            ServerWebExchange exchange) {
+        AuthResponse data = response.getData();
+        if (data == null || !channel.isWeb()) {
+            return ResponseEntity.ok(response);
+        }
+
+        ServerHttpRequest request = exchange.getRequest();
+        ServerHttpResponse httpResponse = exchange.getResponse();
+
+        String accessToken = data.getAccessToken();
+        String refreshToken = data.getRefreshToken();
+        long accessMaxAge = data.getExpiresIn() != null
+                ? data.getExpiresIn()
+                : jwtUtils.getAccessExpirationSeconds();
+        long refreshMaxAge = jwtUtils.getRefreshExpirationSeconds();
+
+        if (StringUtils.hasText(accessToken)) {
+            httpResponse.addCookie(AuthCookieSupport.accessCookie(accessToken, accessMaxAge, request));
+        }
+        if (StringUtils.hasText(refreshToken)) {
+            httpResponse.addCookie(AuthCookieSupport.refreshCookie(refreshToken, refreshMaxAge, request));
+        }
+
+        AuthResponse webSafe = AuthResponse.builder()
+                .accessToken(null)
+                .refreshToken(null)
+                .expiresIn(data.getExpiresIn())
+                .tokenType(data.getTokenType())
+                .channel(ClientChannel.WEB.wireValue())
+                .user(data.getUser())
+                .build();
+
+        return ResponseEntity.ok(ApiResponse.success(response.getCode(), webSafe));
     }
 }

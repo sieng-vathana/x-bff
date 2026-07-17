@@ -17,11 +17,12 @@ import reactor.core.publisher.Mono;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.stream.Collectors;
 
-// @Configuration
-// @EnableWebFluxSecurity
-// @EnableReactiveMethodSecurity
+@Configuration
+@EnableWebFluxSecurity
+@EnableReactiveMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -32,8 +33,12 @@ public class SecurityConfig {
         return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
-                        .anyExchange().permitAll()
+                        .pathMatchers(
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout")
+                        .permitAll()
+                        .anyExchange().authenticated()
                 )
                 .addFilterAt(authenticationWebFilter(), SecurityWebFiltersOrder.AUTHENTICATION)
                 .build();
@@ -64,7 +69,10 @@ public class SecurityConfig {
                     List<String> permissions = jwtUtils.extractPermissions(token);
                     List<SimpleGrantedAuthority> authorities = permissions != null ?
                             permissions.stream()
-                                    .map(p -> new SimpleGrantedAuthority("PERMISSION_" + p))
+                                    .flatMap(permission -> Stream.of(
+                                            new SimpleGrantedAuthority(permission),
+                                            new SimpleGrantedAuthority("PERMISSION_" + permission)))
+                                    .distinct()
                                     .collect(Collectors.toList()) : Collections.emptyList();
 
                     return Mono.just(new UsernamePasswordAuthenticationToken(username, token, authorities));

@@ -2,8 +2,6 @@ package com.bff_vyntra.controller;
 
 import com.bff_vyntra.service.ServiceClientFactory;
 import com.bff_vyntra.utils.VyntraUtil;
-import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,16 +11,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 @RestController
-@RequestMapping({ "/api/v1/orders" })
-@RequiredArgsConstructor
+@RequestMapping("/api/v1/orders")
 public class OrderController {
 
-    private final ServiceClientFactory clientFactory;
-    private WebClient orderClient;
+    private final WebClient orderClient;
 
-    @PostConstruct
-    void init() {
-        this.orderClient = clientFactory.forService("/api/v1/orders");
+    public OrderController(ServiceClientFactory clientFactory) {
+        this.orderClient = clientFactory.forService("order", "/api/v1/orders");
     }
 
     @GetMapping

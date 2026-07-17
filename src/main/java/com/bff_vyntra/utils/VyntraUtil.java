@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sharedlib.response.ApiResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 
 public class VyntraUtil {
@@ -14,14 +16,22 @@ public class VyntraUtil {
      * Parses a raw JSON string from a downstream service and wraps it in a standard ResponseEntity.
      */
     public static ResponseEntity<?> toJsonResponse(String rawResponse) {
+        return toJsonResponse(rawResponse, HttpStatus.OK);
+    }
+
+    public static ResponseEntity<?> toJsonResponse(String rawResponse, HttpStatusCode statusCode) {
+        if (rawResponse == null || rawResponse.isBlank()) {
+            return ResponseEntity.status(statusCode).build();
+        }
         try {
-            // Attempt to parse the raw string as JSON
             JsonNode jsonNode = objectMapper.readTree(rawResponse);
-            return ResponseEntity.ok(jsonNode);
+            return ResponseEntity.status(statusCode).body(jsonNode);
         } catch (JsonProcessingException e) {
-            // If it's not valid JSON, wrap it in our standard ApiResponse format
-            ApiResponse<String> fallbackResponse = ApiResponse.success(200, "Success", rawResponse);
-            return ResponseEntity.ok(fallbackResponse);
+            ApiResponse<String> fallbackResponse = ApiResponse.success(
+                    statusCode.value(),
+                    "Success",
+                    rawResponse);
+            return ResponseEntity.status(statusCode).body(fallbackResponse);
         }
     }
 }
