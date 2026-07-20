@@ -10,6 +10,8 @@ spring:
     default: local
 
 jwt:
-  secret: ${JWT_SECRET}
+  # Local default so IntelliJ / ./x.sh work without env vars.
+  # Override in real environments: export JWT_SECRET='...'
+  secret: ${JWT_SECRET:vyntra-local-jwt-secret-change-me-32c}
   expiration: ${JWT_EXPIRATION:3600000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:86400000}

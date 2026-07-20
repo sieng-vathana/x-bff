@@ -28,10 +28,22 @@ public class BffExceptionHandler {
 
     @ExceptionHandler(WebClientResponseException.class)
     public ResponseEntity<ApiResponse<Void>> handleWebClientResponseException(WebClientResponseException ex) {
-        log.warn("Downstream request failed with status {}", ex.getStatusCode().value());
+        String body = ex.getResponseBodyAsString();
+        String path = ex.getRequest() != null ? String.valueOf(ex.getRequest().getURI()) : "unknown";
+        log.warn(
+                "Downstream request failed status={} uri={} body={}",
+                ex.getStatusCode().value(),
+                path,
+                body == null || body.isBlank() ? "<empty>" : body);
+
+        // Surface a short hint for local debugging (status -1 means business error wrapper)
+        String hint = "Downstream request failed (" + ex.getStatusCode().value() + ") calling " + path;
+        if (body != null && !body.isBlank() && body.length() < 500) {
+            hint = hint + ": " + body;
+        }
         return new ResponseEntity<>(
-                ApiResponse.error(ex.getStatusCode().value(), "Downstream request failed."),
-                ex.getStatusCode());
+                ApiResponse.error(ex.getStatusCode().value(), hint),
+                HttpStatus.BAD_GATEWAY);
     }
 
     @ExceptionHandler(BadCredentialsException.class)

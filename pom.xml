@@ -33,7 +33,7 @@
 		<!-- Internal Shared Library -->
 		<dependency>
 			<groupId>com.sharedlib</groupId>
-			<artifactId>sharedlib</artifactId>
+			<artifactId>x-sharedlib</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 			<exclusions>
 				<exclusion>
