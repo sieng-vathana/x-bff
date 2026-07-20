@@ -8,11 +8,11 @@
 		<version>3.5.14</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.bff-vyntra</groupId>
-	<artifactId>BffVyntra</artifactId>
+	<groupId>com.x</groupId>
+	<artifactId>x-bff</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name/>
-	<description/>
+	<name>x-bff</name>
+<description/>
 	<url/>
 	<licenses>
 		<license/>
@@ -32,7 +32,7 @@
 	<dependencies>
 		<!-- Internal Shared Library -->
 		<dependency>
-			<groupId>com.sharedlib</groupId>
+			<groupId>com.x</groupId>
 			<artifactId>x-sharedlib</artifactId>
 			<version>0.0.1-SNAPSHOT</version>
 			<exclusions>

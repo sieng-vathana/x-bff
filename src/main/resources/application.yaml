@@ -5,7 +5,7 @@ spring:
   main:
     web-application-type: reactive
   application:
-    name: BffVyntra
+    name: XBff
   profiles:
     default: local
 
