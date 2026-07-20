@@ -5,13 +5,13 @@ spring:
   main:
     web-application-type: reactive
   application:
-    name: XBff
+    name: x-bff
   profiles:
     default: local
 
 jwt:
   # Local default so IntelliJ / ./x.sh work without env vars.
   # Override in real environments: export JWT_SECRET='...'
-  secret: ${JWT_SECRET:vyntra-local-jwt-secret-change-me-32c}
+  secret: ${JWT_SECRET:x-local-jwt-secret-change-me-32chars}
   expiration: ${JWT_EXPIRATION:3600000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:86400000}
