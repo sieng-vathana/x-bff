@@ -155,7 +155,7 @@ class AuthenticationControllerTest {
                 .user(AuthUserSummary.builder()
                         .id(1L)
                         .username("user")
-                        .permissions(Set.of("VIEW_PRODUCTS"))
+                        .permissions(Set.of("x-product:read"))
                         .build())
                 .build();
     }

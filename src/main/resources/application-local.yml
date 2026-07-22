@@ -2,6 +2,7 @@ spring:
   config:
     activate:
       on-profile: local
+    import: optional:file:../config/secrets.yml
 
 services:
   user:

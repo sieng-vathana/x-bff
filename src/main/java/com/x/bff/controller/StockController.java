@@ -28,7 +28,7 @@ public class StockController {
     }
 
     @GetMapping("/{stockId}")
-    @PreAuthorize("hasAuthority('PERMISSION_MANAGE_STOCK')")
+    @PreAuthorize("hasAuthority('x-inventory:read')")
     public Mono<ResponseEntity<?>> getStock(
             @PathVariable String stockId,
             @RequestParam(required = false) String search,
@@ -47,7 +47,7 @@ public class StockController {
     }
 
     @PostMapping("/in")
-    @PreAuthorize("hasAnyAuthority('M004S02:1')")
+    @PreAuthorize("hasAuthority('x-inventory:stock-in')")
     public Mono<ResponseEntity<?>> stockIn(@RequestBody Object request) {
         return stockClient.post()
                 .uri("/in")
@@ -58,7 +58,7 @@ public class StockController {
     }
 
     @PostMapping("/out")
-    @PreAuthorize("hasAnyAuthority('M004S02:1')")
+    @PreAuthorize("hasAuthority('x-inventory:stock-out')")
     public Mono<ResponseEntity<?>> stockOut(@RequestBody Object request) {
         return stockClient.post()
                 .uri("/out")

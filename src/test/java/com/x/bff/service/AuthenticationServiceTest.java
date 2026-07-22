@@ -35,8 +35,8 @@ class AuthenticationServiceTest {
         String hashed = passwordEncoder.encode("pass");
         when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(
                 new com.x.bff.dto.UserCredentialsResponse(
-                        1L, "user", hashed, Set.of("VIEW_PRODUCTS"))));
-        when(jwtUtils.generateToken(eq("user"), eq(Set.of("VIEW_PRODUCTS")), eq("mobile"), eq(1L)))
+                        1L, "user", hashed, Set.of("x-product:read"))));
+        when(jwtUtils.generateToken(eq("user"), eq(Set.of("x-product:read")), eq("mobile"), eq(1L)))
                 .thenReturn("access");
         when(jwtUtils.generateRefreshToken(eq("user"), eq("mobile"))).thenReturn("refresh");
         when(jwtUtils.getAccessExpirationSeconds()).thenReturn(900L);
@@ -96,7 +96,7 @@ class AuthenticationServiceTest {
         when(jwtUtils.validateRefreshToken("refresh-jwt", "user")).thenReturn(true);
         when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(
                 new com.x.bff.dto.UserCredentialsResponse(
-                        1L, "user", hashed, Set.of("VIEW_PRODUCTS"))));
+                        1L, "user", hashed, Set.of("x-product:read"))));
         when(jwtUtils.generateToken(any(), any(), any(), anyLong())).thenReturn("access2");
         when(jwtUtils.generateRefreshToken(any(), any())).thenReturn("refresh2");
         when(jwtUtils.getAccessExpirationSeconds()).thenReturn(900L);

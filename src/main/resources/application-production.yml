@@ -3,16 +3,20 @@ spring:
     activate:
       on-profile: production
 
+# When services run in k3s, replace with cluster Service URLs.
+# Defaults assume NodePort / host networking on the same server IP.
 services:
   user:
-    base-url: ${USER_SERVICE_URL}
+    base-url: ${USER_SERVICE_URL:http://169.58.46.185:7445/internal/users}
   business:
-    base-url: ${BUSINESS_SERVICE_URL}
+    base-url: ${BUSINESS_SERVICE_URL:http://169.58.46.185:8086}
   shop:
-    base-url: ${SHOP_SERVICE_URL}
+    base-url: ${SHOP_SERVICE_URL:http://169.58.46.185:8087}
   product:
-    base-url: ${PRODUCT_SERVICE_URL}
+    base-url: ${PRODUCT_SERVICE_URL:http://169.58.46.185:8082}
   inventory:
-    base-url: ${INVENTORY_SERVICE_URL}
+    base-url: ${INVENTORY_SERVICE_URL:http://169.58.46.185:8085}
   order:
-    base-url: ${ORDER_SERVICE_URL}
+    base-url: ${ORDER_SERVICE_URL:http://169.58.46.185:8083}
+  storage:
+    base-url: ${STORAGE_SERVICE_URL:http://169.58.46.185:8088}

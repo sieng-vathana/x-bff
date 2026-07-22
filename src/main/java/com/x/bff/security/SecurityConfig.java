@@ -17,7 +17,6 @@ import reactor.core.publisher.Mono;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Stream;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -67,13 +66,15 @@ public class SecurityConfig {
                 try {
                     String username = jwtUtils.extractUsername(token);
                     List<String> permissions = jwtUtils.extractPermissions(token);
-                    List<SimpleGrantedAuthority> authorities = permissions != null ?
-                            permissions.stream()
-                                    .flatMap(permission -> Stream.of(
-                                            new SimpleGrantedAuthority(permission),
-                                            new SimpleGrantedAuthority("PERMISSION_" + permission)))
-                                    .distinct()
-                                    .collect(Collectors.toList()) : Collections.emptyList();
+                    // Authorities = JWT permission codes as-is: x-{service}:{action}
+                    // e.g. x-product:read, x-order:create, x-inventory:stock-in
+                    List<SimpleGrantedAuthority> authorities = permissions != null
+                            ? permissions.stream()
+                            .filter(p -> p != null && !p.isBlank())
+                            .map(SimpleGrantedAuthority::new)
+                            .distinct()
+                            .collect(Collectors.toList())
+                            : Collections.emptyList();
 
                     return Mono.just(new UsernamePasswordAuthenticationToken(username, token, authorities));
                 } catch (Exception e) {

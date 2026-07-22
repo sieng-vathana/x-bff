@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,6 +39,7 @@ public class ShopController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('x-shop:create')")
     public Mono<ResponseEntity<ShopResponse>> create(
             @Valid @RequestBody CreateShopRequest request,
             Authentication authentication) {
@@ -50,6 +52,7 @@ public class ShopController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('x-shop:read')")
     public Mono<ResponseEntity<ShopResponse>> getById(
             @PathVariable Long id,
             Authentication authentication) {
@@ -62,6 +65,7 @@ public class ShopController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('x-shop:read')")
     public Mono<ResponseEntity<java.util.List<ShopResponse>>> getByBusiness(
             @RequestParam Long businessId,
             Authentication authentication) {

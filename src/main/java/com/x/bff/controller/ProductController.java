@@ -21,7 +21,7 @@ public class ProductController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('PERMISSION_VIEW_PRODUCTS')")
+    @PreAuthorize("hasAuthority('x-product:read')")
     public Mono<ResponseEntity<?>> getProducts() {
         return productClient.get()
                 .retrieve()

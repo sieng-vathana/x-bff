@@ -8,6 +8,7 @@ import com.x.bff.service.UserServiceClient;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,6 +34,7 @@ public class BusinessController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('x-business:create')")
     public Mono<ResponseEntity<BusinessResponse>> create(
             @Valid @RequestBody CreateBusinessRequest request,
             Authentication authentication) {
@@ -45,6 +47,7 @@ public class BusinessController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('x-business:read')")
     public Mono<ResponseEntity<BusinessResponse>> getById(
             @PathVariable Long id,
             Authentication authentication) {
@@ -60,6 +63,7 @@ public class BusinessController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('x-business:read')")
     public Mono<ResponseEntity<java.util.List<BusinessResponse>>> getMine(Authentication authentication) {
         return currentUser(authentication)
                 .flatMap(user -> businessClient.get()

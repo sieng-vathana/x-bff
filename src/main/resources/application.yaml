@@ -2,6 +2,9 @@ server:
   port: ${BFF_SERVICE_PORT:8443}
 
 spring:
+  banner:
+    location: classpath:banner.txt
+    mode: console
   main:
     web-application-type: reactive
   application:
@@ -15,3 +18,20 @@ jwt:
   secret: ${JWT_SECRET:x-local-jwt-secret-change-me-32chars}
   expiration: ${JWT_EXPIRATION:3600000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:86400000}
+
+x:
+  http:
+    logging:
+      enabled: true
+      server: x-bff
+      hop: "x-api-gateway → x-bff"
+      hops:
+        /api/v1/auth: "x-api-gateway → x-bff → x-user-service"
+        /api/v1/files: "x-api-gateway → x-bff → x-storage-service"
+        /api/v1/products: "x-api-gateway → x-bff → x-product-service"
+        /api/v1/orders: "x-api-gateway → x-bff → x-order-service"
+        /api/v1/businesses: "x-api-gateway → x-bff → x-business-service"
+        /api/v1/shops: "x-api-gateway → x-bff → x-shop-service"
+        /api/v1/stock: "x-api-gateway → x-bff → x-inventory-service"
+        /api/v1/home: "x-api-gateway → x-bff → x-inventory-service"
+        /api/v1/payments: "x-api-gateway → x-bff → x-payment-service"

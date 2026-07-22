@@ -29,6 +29,18 @@
 	<properties>
 		<java.version>17</java.version>
 	</properties>
+
+	<!-- Resolve com.x:x-sharedlib from GitHub Packages (or local ~/.m2 after install/deploy) -->
+	<repositories>
+		<repository>
+			<id>github-x-sharedlib</id>
+			<url>https://maven.pkg.github.com/VathanaProgrammer/x-sharedlib</url>
+			<snapshots>
+				<enabled>true</enabled>
+			</snapshots>
+		</repository>
+	</repositories>
+
 	<dependencies>
 		<!-- Internal Shared Library -->
 		<dependency>

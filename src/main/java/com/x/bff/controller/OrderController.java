@@ -21,7 +21,7 @@ public class OrderController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('PERMISSION_MANAGE_ORDERS')")
+    @PreAuthorize("hasAuthority('x-order:read')")
     public Mono<ResponseEntity<?>> getOrders() {
         return orderClient.get()
                 .retrieve()
@@ -30,6 +30,7 @@ public class OrderController {
     }
 
     @GetMapping("/echo/{text}")
+    @PreAuthorize("hasAuthority('x-order:read')")
     public Mono<ResponseEntity<?>> echoText(@org.springframework.web.bind.annotation.PathVariable String text) {
         return orderClient.get()
                 .uri("/echo/{text}", text)
