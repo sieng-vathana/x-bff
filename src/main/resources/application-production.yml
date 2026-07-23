@@ -10,8 +10,8 @@ services:
     base-url: ${USER_SERVICE_URL:http://169.58.46.185:7445/internal/users}
   business:
     base-url: ${BUSINESS_SERVICE_URL:http://169.58.46.185:8086}
-  shop:
-    base-url: ${SHOP_SERVICE_URL:http://169.58.46.185:8087}
+  store:
+    base-url: ${STORE_SERVICE_URL:http://169.58.46.185:8087}
   product:
     base-url: ${PRODUCT_SERVICE_URL:http://169.58.46.185:8082}
   inventory:

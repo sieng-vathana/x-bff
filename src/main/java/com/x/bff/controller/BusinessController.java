@@ -5,9 +5,11 @@ import com.x.bff.dto.CreateBusinessRequest;
 import com.x.bff.dto.UserCredentialsResponse;
 import com.x.bff.service.ServiceClientFactory;
 import com.x.bff.service.UserServiceClient;
+import com.sharedlib.response.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,49 +37,72 @@ public class BusinessController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('x-business:create')")
-    public Mono<ResponseEntity<BusinessResponse>> create(
+    public Mono<ResponseEntity<ApiResponse<BusinessResponse>>> create(
             @Valid @RequestBody CreateBusinessRequest request,
             Authentication authentication) {
         return currentUser(authentication)
                 .flatMap(user -> businessClient.post()
-                        .bodyValue(new CreateBusinessCommand(user.getId(), request.name(), request.code()))
+                        .bodyValue(new CreateBusinessCommand(
+                                user.getId(),
+                                request.name(),
+                                request.code(),
+                                request.defaultCurrencyCode(),
+                                request.taxRegistrationNumber(),
+                                request.taxRegistrationLabel(),
+                                request.defaultTaxId(),
+                                request.pricesIncludeTax(),
+                                request.timeZone(),
+                                request.fiscalYearStartMonth()))
                         .retrieve()
-                        .bodyToMono(BusinessResponse.class))
-                .map(response -> ResponseEntity.status(HttpStatus.CREATED).body(response));
+                        .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
+                        .map(ApiResponse::getData))
+                .map(response -> ResponseEntity.status(HttpStatus.CREATED)
+                        .body(ApiResponse.success(HttpStatus.CREATED.value(), "Business created", response)));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('x-business:read')")
-    public Mono<ResponseEntity<BusinessResponse>> getById(
+    public Mono<ResponseEntity<ApiResponse<BusinessResponse>>> getById(
             @PathVariable Long id,
             Authentication authentication) {
         return currentUser(authentication)
                 .flatMap(user -> businessClient.get()
                         .uri("/{id}", id)
                         .retrieve()
-                        .bodyToMono(BusinessResponse.class)
+                        .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
+                        .map(ApiResponse::getData)
                         .filter(business -> Objects.equals(user.getId(), business.ownerUserId()))
                         .switchIfEmpty(Mono.error(new org.springframework.security.access.AccessDeniedException(
                                 "Business does not belong to the authenticated user"))))
-                .map(ResponseEntity::ok);
+                .map(business -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), business)));
     }
 
     @GetMapping
     @PreAuthorize("hasAuthority('x-business:read')")
-    public Mono<ResponseEntity<java.util.List<BusinessResponse>>> getMine(Authentication authentication) {
+    public Mono<ResponseEntity<ApiResponse<java.util.List<BusinessResponse>>>> getMine(Authentication authentication) {
         return currentUser(authentication)
                 .flatMap(user -> businessClient.get()
                         .uri(uriBuilder -> uriBuilder.queryParam("ownerUserId", user.getId()).build())
                         .retrieve()
-                        .bodyToFlux(BusinessResponse.class)
-                        .collectList())
-                .map(ResponseEntity::ok);
+                        .bodyToMono(new ParameterizedTypeReference<ApiResponse<java.util.List<BusinessResponse>>>() {})
+                        .map(ApiResponse::getData))
+                .map(businesses -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), businesses)));
     }
 
     private Mono<UserCredentialsResponse> currentUser(Authentication authentication) {
         return userServiceClient.findByUsername(authentication.getName());
     }
 
-    private record CreateBusinessCommand(Long ownerUserId, String name, String code) {
+    private record CreateBusinessCommand(
+            Long ownerUserId,
+            String name,
+            String code,
+            String defaultCurrencyCode,
+            String taxRegistrationNumber,
+            String taxRegistrationLabel,
+            Long defaultTaxId,
+            Boolean pricesIncludeTax,
+            String timeZone,
+            Integer fiscalYearStartMonth) {
     }
 }
