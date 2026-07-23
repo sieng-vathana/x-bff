@@ -9,7 +9,7 @@ services:
     base-url: http://127.0.0.1:7445/internal/users
   business:
     base-url: http://127.0.0.1:8086
-  shop:
+  store:
     base-url: http://127.0.0.1:8087
   product:
     base-url: http://127.0.0.1:8082

@@ -31,7 +31,7 @@ x:
         /api/v1/products: "x-api-gateway → x-bff → x-product-service"
         /api/v1/orders: "x-api-gateway → x-bff → x-order-service"
         /api/v1/businesses: "x-api-gateway → x-bff → x-business-service"
-        /api/v1/shops: "x-api-gateway → x-bff → x-shop-service"
+        /api/v1/stores: "x-api-gateway → x-bff → x-store-service"
         /api/v1/stock: "x-api-gateway → x-bff → x-inventory-service"
         /api/v1/home: "x-api-gateway → x-bff → x-inventory-service"
         /api/v1/payments: "x-api-gateway → x-bff → x-payment-service"

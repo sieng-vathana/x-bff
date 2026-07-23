@@ -1,14 +1,16 @@
 package com.x.bff.controller;
 
 import com.x.bff.dto.BusinessResponse;
-import com.x.bff.dto.CreateShopRequest;
-import com.x.bff.dto.ShopResponse;
+import com.x.bff.dto.CreateStoreRequest;
+import com.x.bff.dto.StoreResponse;
 import com.x.bff.dto.UserCredentialsResponse;
 import com.x.bff.service.ServiceClientFactory;
 import com.x.bff.service.UserServiceClient;
+import com.sharedlib.response.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -25,57 +27,60 @@ import reactor.core.publisher.Mono;
 import java.util.Objects;
 
 @RestController
-@RequestMapping("/api/v1/shops")
-public class ShopController {
+@RequestMapping("/api/v1/stores")
+public class StoreController {
 
-    private final WebClient shopClient;
+    private final WebClient storeClient;
     private final WebClient businessClient;
     private final UserServiceClient userServiceClient;
 
-    public ShopController(ServiceClientFactory clientFactory, UserServiceClient userServiceClient) {
-        this.shopClient = clientFactory.forService("shop", "/api/v1/shops");
+    public StoreController(ServiceClientFactory clientFactory, UserServiceClient userServiceClient) {
+        this.storeClient = clientFactory.forService("store", "/api/v1/stores");
         this.businessClient = clientFactory.forService("business", "/api/v1/businesses");
         this.userServiceClient = userServiceClient;
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('x-shop:create')")
-    public Mono<ResponseEntity<ShopResponse>> create(
-            @Valid @RequestBody CreateShopRequest request,
+    @PreAuthorize("hasAuthority('x-store:create')")
+    public Mono<ResponseEntity<ApiResponse<StoreResponse>>> create(
+            @Valid @RequestBody CreateStoreRequest request,
             Authentication authentication) {
         return requireBusinessOwnership(request.businessId(), authentication)
-                .then(shopClient.post()
+                .then(storeClient.post()
                         .bodyValue(request)
                         .retrieve()
-                        .bodyToMono(ShopResponse.class))
-                .map(response -> ResponseEntity.status(HttpStatus.CREATED).body(response));
+                        .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
+                        .map(ApiResponse::getData))
+                .map(response -> ResponseEntity.status(HttpStatus.CREATED)
+                        .body(ApiResponse.success(HttpStatus.CREATED.value(), "Store created", response)));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('x-shop:read')")
-    public Mono<ResponseEntity<ShopResponse>> getById(
+    @PreAuthorize("hasAuthority('x-store:read')")
+    public Mono<ResponseEntity<ApiResponse<StoreResponse>>> getById(
             @PathVariable Long id,
             Authentication authentication) {
-        return shopClient.get()
-                .uri("/{id}", id)
-                .retrieve()
-                .bodyToMono(ShopResponse.class)
-                .flatMap(shop -> requireBusinessOwnership(shop.businessId(), authentication).thenReturn(shop))
-                .map(ResponseEntity::ok);
+        return storeClient.get()
+                        .uri("/{id}", id)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
+                        .map(ApiResponse::getData)
+                .flatMap(store -> requireBusinessOwnership(store.businessId(), authentication).thenReturn(store))
+                .map(store -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), store)));
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('x-shop:read')")
-    public Mono<ResponseEntity<java.util.List<ShopResponse>>> getByBusiness(
+    @PreAuthorize("hasAuthority('x-store:read')")
+    public Mono<ResponseEntity<ApiResponse<java.util.List<StoreResponse>>>> getByBusiness(
             @RequestParam Long businessId,
             Authentication authentication) {
         return requireBusinessOwnership(businessId, authentication)
-                .then(shopClient.get()
+                .then(storeClient.get()
                         .uri(uriBuilder -> uriBuilder.queryParam("businessId", businessId).build())
                         .retrieve()
-                        .bodyToFlux(ShopResponse.class)
-                        .collectList())
-                .map(ResponseEntity::ok);
+                        .bodyToMono(new ParameterizedTypeReference<ApiResponse<java.util.List<StoreResponse>>>() {})
+                        .map(ApiResponse::getData))
+                .map(stores -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), stores)));
     }
 
     private Mono<Void> requireBusinessOwnership(Long businessId, Authentication authentication) {
@@ -83,7 +88,8 @@ public class ShopController {
                 .flatMap(user -> businessClient.get()
                         .uri("/{id}", businessId)
                         .retrieve()
-                        .bodyToMono(BusinessResponse.class)
+                        .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
+                        .map(ApiResponse::getData)
                         .filter(business -> Objects.equals(user.getId(), business.ownerUserId()))
                         .switchIfEmpty(Mono.error(new AccessDeniedException(
                                 "Business does not belong to the authenticated user"))))

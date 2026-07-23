@@ -34,8 +34,8 @@ class ServiceClientFactoryTest {
         ServiceClientFactory factory = new ServiceClientFactory(
                 WebClient.builder(), new MockEnvironment(), "");
 
-        assertThatThrownBy(() -> factory.resolveServiceBaseUrl("shop", "/api/v1/shops"))
+        assertThatThrownBy(() -> factory.resolveServiceBaseUrl("store", "/api/v1/stores"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("shop");
+                .hasMessageContaining("store");
     }
 }
