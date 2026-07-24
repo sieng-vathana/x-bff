@@ -43,5 +43,5 @@ jobs:
           script: |
             sudo k3s kubectl -n x-platform create deployment x-bff --image=ghcr.io/vathanaprogrammer/x-bff:main --dry-run=client -o yaml | sudo k3s kubectl apply -f -
             sudo k3s kubectl -n x-platform expose deployment x-bff --port=8080 --target-port=8080 --dry-run=client -o yaml | sudo k3s kubectl apply -f -
-            sudo k3s kubectl -n x-platform set env deployment/x-bff SERVER_PORT=8080 SPRING_PROFILES_ACTIVE=production SPRING_DATASOURCE_URL=jdbc:mysql://mysql.x-platform.svc.cluster.local:3306/x_prod SPRING_JPA_HIBERNATE_DDL_AUTO=update --from=secret/x-app-database
+            sudo k3s kubectl -n x-platform set env deployment/x-bff SERVER_PORT=8080 SPRING_PROFILES_ACTIVE=production USER_SERVICE_URL=http://x-user-service.x-platform.svc.cluster.local:8080/internal/users SPRING_DATASOURCE_URL=jdbc:mysql://mysql.x-platform.svc.cluster.local:3306/x_prod SPRING_JPA_HIBERNATE_DDL_AUTO=update --from=secret/x-app-database
             sudo k3s kubectl -n x-platform rollout status deployment/x-bff --timeout=180s
