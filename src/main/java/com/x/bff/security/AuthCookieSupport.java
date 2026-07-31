@@ -39,16 +39,18 @@ public final class AuthCookieSupport {
             long maxAgeSeconds,
             String path,
             ServerHttpRequest request) {
+        boolean secure = isHttps(request);
         return ResponseCookie.from(name, value == null ? "" : value)
                 .httpOnly(true)
-                .secure(isHttps(request))
-                .sameSite("Lax")
+                .secure(secure)
+                .sameSite(secure ? "None" : "Lax")
                 .path(path)
                 .maxAge(Duration.ofSeconds(Math.max(maxAgeSeconds, 0)));
     }
 
     static boolean isHttps(ServerHttpRequest request) {
         return request.getSslInfo() != null
+                || "https".equalsIgnoreCase(request.getURI().getScheme())
                 || "https".equalsIgnoreCase(request.getHeaders().getFirst("X-Forwarded-Proto"));
     }
 }
