@@ -15,6 +15,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -60,6 +61,25 @@ public class BusinessController {
                         .body(ApiResponse.success(HttpStatus.CREATED.value(), "Business created", response)));
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('x-business:update')")
+    public Mono<ResponseEntity<ApiResponse<BusinessResponse>>> update(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateBusinessRequest request,
+            Authentication authentication) {
+        return currentUser(authentication)
+                .flatMap(user -> businessClient.put()
+                        .uri("/{id}", id)
+                        .bodyValue(request)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
+                        .map(ApiResponse::getData)
+                        .filter(business -> Objects.equals(user.getId(), business.ownerUserId()))
+                        .switchIfEmpty(Mono.error(new org.springframework.security.access.AccessDeniedException(
+                                "Business does not belong to the authenticated user"))))
+                .map(business -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Business updated", business)));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('x-business:read')")
     public Mono<ResponseEntity<ApiResponse<BusinessResponse>>> getById(
@@ -91,6 +111,10 @@ public class BusinessController {
 
     private Mono<UserCredentialsResponse> currentUser(Authentication authentication) {
         return userServiceClient.findByUsername(authentication.getName());
+    }
+
+    private record UpdateBusinessRequest(
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 160) String name) {
     }
 
     private record CreateBusinessCommand(

@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @Builder
 @AllArgsConstructor
@@ -27,4 +29,8 @@ public class AuthResponse {
     /** {@code web} or {@code mobile}. */
     private String channel;
     private AuthUserSummary user;
+    /** The signed-in user's primary business, included to hydrate the web client in one response. */
+    private BusinessResponse business;
+    /** Stores for the primary business, so the initial workspace needs no follow-up request. */
+    private List<StoreResponse> stores;
 }

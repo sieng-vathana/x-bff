@@ -3,6 +3,7 @@ package com.x.bff.controller;
 import com.x.bff.dto.AuthRequest;
 import com.x.bff.dto.AuthResponse;
 import com.x.bff.dto.AuthUserSummary;
+import com.x.bff.dto.BusinessResponse;
 import com.x.bff.dto.RefreshTokenRequest;
 import com.x.bff.security.JwtUtils;
 import com.x.bff.security.SecurityConfig;
@@ -82,7 +83,9 @@ class AuthenticationControllerTest {
                 .jsonPath("$.data.accessToken").doesNotExist()
                 .jsonPath("$.data.refreshToken").doesNotExist()
                 .jsonPath("$.data.channel").isEqualTo("web")
-                .jsonPath("$.data.user.username").isEqualTo("user");
+                .jsonPath("$.data.user.username").isEqualTo("user")
+                .jsonPath("$.data.business.id").isEqualTo(12)
+                .jsonPath("$.data.stores[0].id").isEqualTo(21);
     }
 
     @Test
@@ -157,6 +160,12 @@ class AuthenticationControllerTest {
                         .username("user")
                         .permissions(Set.of("x-product:read"))
                         .build())
+                .business(new BusinessResponse(
+                        12L, 1L, "Demo Business", "DEMO", "USD", null, null, null,
+                        true, "Asia/Phnom_Penh", 1, 1, null, null))
+                .stores(java.util.List.of(new com.x.bff.dto.StoreResponse(
+                        21L, 12L, "Main Store", "MAIN", null, null, null, "Phnom Penh", null, "KH",
+                        null, null, null, null, null, null, null, java.util.List.of(), 1, null, null)))
                 .build();
     }
 }

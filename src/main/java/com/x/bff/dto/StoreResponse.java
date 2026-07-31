@@ -1,6 +1,7 @@
 package com.x.bff.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record StoreResponse(
         Long id,
@@ -20,6 +21,7 @@ public record StoreResponse(
         String website,
         java.math.BigDecimal latitude,
         java.math.BigDecimal longitude,
+        List<StoreImageResponse> images,
         Integer status,
         LocalDateTime createdAt,
         LocalDateTime updatedAt) {
