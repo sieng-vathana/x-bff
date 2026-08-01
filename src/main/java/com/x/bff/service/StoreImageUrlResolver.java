@@ -20,17 +20,24 @@ import java.util.regex.Pattern;
 public class StoreImageUrlResolver {
 
     private static final Pattern FILE_PROXY_URL = Pattern.compile("^/api/v1/files/(\\d+)/content(?:\\?.*)?$");
+    private static final Pattern S3_OBJECT_URL = Pattern.compile(
+            "^https://[^/]+\\.s3(?:[.-][^/]+)?\\.amazonaws\\.com/([^?]+)(?:\\?.*)?$",
+            Pattern.CASE_INSENSITIVE);
 
     private final WebClient storageClient;
+    private final WebClient internalStorageClient;
 
     public StoreImageUrlResolver(ServiceClientFactory clientFactory) {
         this.storageClient = clientFactory.forService("storage", "/api/v1/files");
+        this.internalStorageClient = clientFactory.forService("storage", "/internal/files");
     }
 
     public Mono<List<StoreImageRequest>> resolveRequests(List<StoreImageRequest> images) {
         return Flux.fromIterable(images)
                 .concatMap(image -> resolve(image.imageUrl())
-                        .map(url -> new StoreImageRequest(url, image.isPrimary(), image.sortOrder())))
+                        .map(file -> new StoreImageRequest(
+                                file.id() == null ? image.imageUrl() : fileReference(file.id()),
+                                image.isPrimary(), image.sortOrder())))
                 .collectList();
     }
 
@@ -40,7 +47,8 @@ public class StoreImageUrlResolver {
         }
         return Flux.fromIterable(store.images())
                 .concatMap(image -> resolve(image.imageUrl())
-                        .map(url -> new StoreImageResponse(image.id(), url, image.isPrimary(), image.sortOrder())))
+                        .map(file -> new StoreImageResponse(
+                                image.id(), file.url(), file.id(), image.isPrimary(), image.sortOrder())))
                 .collectList()
                 .map(images -> new StoreResponse(
                         store.id(), store.businessId(), store.name(), store.code(), store.addressLine1(),
@@ -60,19 +68,44 @@ public class StoreImageUrlResolver {
                         content, page.page(), page.size(), page.totalElements(), page.totalPages(), page.hasNext()));
     }
 
-    private Mono<String> resolve(String imageUrl) {
-        Matcher matcher = FILE_PROXY_URL.matcher(imageUrl == null ? "" : imageUrl.trim());
-        if (!matcher.matches()) {
-            return Mono.just(imageUrl);
+    private Mono<ResolvedImageUrl> resolve(String imageUrl) {
+        String normalized = imageUrl == null ? "" : imageUrl.trim();
+        Matcher fileReference = FILE_PROXY_URL.matcher(normalized);
+        if (fileReference.matches()) {
+            return resolveById(Long.valueOf(fileReference.group(1)));
         }
+        Matcher s3Object = S3_OBJECT_URL.matcher(normalized);
+        if (s3Object.matches()) {
+            return resolveByRelativePath(s3Object.group(1));
+        }
+        return Mono.just(new ResolvedImageUrl(imageUrl, null));
+    }
+
+    private Mono<ResolvedImageUrl> resolveById(Long id) {
         return storageClient.get()
-                .uri("/{id}", Long.valueOf(matcher.group(1)))
+                .uri("/{id}", id)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoredFileResponse>>() {})
                 .map(ApiResponse::getData)
-                .map(StoredFileResponse::url);
+                .map(file -> new ResolvedImageUrl(file.url(), file.id()));
+    }
+
+    private Mono<ResolvedImageUrl> resolveByRelativePath(String relativePath) {
+        return internalStorageClient.get()
+                .uri("/by-relative-path?relativePath={relativePath}", relativePath)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoredFileResponse>>() {})
+                .map(ApiResponse::getData)
+                .map(file -> new ResolvedImageUrl(file.url(), file.id()));
+    }
+
+    private static String fileReference(Long fileId) {
+        return "/api/v1/files/" + fileId + "/content";
     }
 
     private record StoredFileResponse(Long id, String url) {
+    }
+
+    private record ResolvedImageUrl(String url, Long id) {
     }
 }

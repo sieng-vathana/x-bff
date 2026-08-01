@@ -1,4 +1,4 @@
 package com.x.bff.dto;
 
-public record StoreImageResponse(Long id, String imageUrl, Boolean isPrimary, Integer sortOrder) {
+public record StoreImageResponse(Long id, String imageUrl, Long fileId, Boolean isPrimary, Integer sortOrder) {
 }
