@@ -10,7 +10,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.net.URI;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -48,13 +50,18 @@ class StoreImageUrlResolverTest {
     @Test
     void replacesAnOldRawS3UrlWithAFreshSignedUrl() {
         ServiceClientFactory clientFactory = mock(ServiceClientFactory.class);
+        AtomicReference<URI> requestUri = new AtomicReference<>();
         WebClient internalStorageClient = WebClient.builder()
-                .exchangeFunction(request -> Mono.just(ClientResponse.create(HttpStatus.OK)
+                .baseUrl("http://storage-service:8080/internal/files")
+                .exchangeFunction(request -> {
+                    requestUri.set(request.url());
+                    return Mono.just(ClientResponse.create(HttpStatus.OK)
                         .header(HttpHeaders.CONTENT_TYPE, "application/json")
                         .body("""
                                 {"status":1,"code":200,"data":{"id":1,"url":"https://bucket.s3.ap-southeast-1.amazonaws.com/media/store.webp?X-Amz-Signature=fresh"}}
                                 """)
-                        .build()))
+                        .build());
+                })
                 .build();
         when(clientFactory.forService("storage", "/api/v1/files")).thenReturn(WebClient.builder().build());
         when(clientFactory.forService("storage", "/internal/files")).thenReturn(internalStorageClient);
@@ -73,5 +80,7 @@ class StoreImageUrlResolverTest {
                     org.junit.jupiter.api.Assertions.assertEquals(1L, resolved.images().get(0).fileId());
                 })
                 .verifyComplete();
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "/internal/files/by-relative-path", requestUri.get().getPath());
     }
 }
