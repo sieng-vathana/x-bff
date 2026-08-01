@@ -7,6 +7,8 @@ RUN groupadd --system --gid 10001 spring \
 ARG JAR_FILE=target/*-SNAPSHOT.jar
 COPY --chown=spring:spring ${JAR_FILE} application.jar
 
+#FROM eclipse-mosquitto:test
+
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0"
 USER spring:spring
 ENTRYPOINT ["java", "-jar", "/app/application.jar"]
