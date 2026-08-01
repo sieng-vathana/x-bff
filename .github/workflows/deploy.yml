@@ -7,7 +7,7 @@ permissions:
   contents: read
   packages: write
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,7 @@ jobs:
           server-password: GITHUB_TOKEN
       - uses: actions/checkout@v4
         with:
-          repository: VathanaProgrammer/x-sharedlib
+          repository: sieng-vathana/x-sharedlib
           path: x-sharedlib
       - run: mvn --batch-mode --no-transfer-progress -DskipTests install -f x-sharedlib/pom.xml
       - run: mvn --batch-mode --no-transfer-progress -DskipTests package
@@ -35,15 +35,16 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/vathanaprogrammer/x-bff:main
-            ghcr.io/vathanaprogrammer/x-bff:${{ github.sha }}
-      - uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.K3S_DEPLOY_HOST }}
-          username: ${{ secrets.K3S_DEPLOY_USER }}
-          key: ${{ secrets.K3S_SSH_KEY }}
-          script: |
-            sudo k3s kubectl -n x-platform create deployment x-bff --image=ghcr.io/vathanaprogrammer/x-bff:${{ github.sha }} --dry-run=client -o yaml | sudo k3s kubectl apply -f -
-            sudo k3s kubectl -n x-platform expose deployment x-bff --port=8080 --target-port=8080 --dry-run=client -o yaml | sudo k3s kubectl apply -f -
-            sudo k3s kubectl -n x-platform set env deployment/x-bff SERVER_PORT=8080 SPRING_PROFILES_ACTIVE=production USER_SERVICE_URL=http://x-user-service.x-platform.svc.cluster.local:8080/internal/users SPRING_DATASOURCE_URL=jdbc:mysql://mysql.x-platform.svc.cluster.local:3306/x_prod SPRING_JPA_HIBERNATE_DDL_AUTO=update --from=secret/x-app-database
-            sudo k3s kubectl -n x-platform rollout status deployment/x-bff --timeout=180s
+            ghcr.io/sieng-vathana/x-bff:main
+            ghcr.io/sieng-vathana/x-bff:${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, linux, x64, x-platform-deploy]
+    steps:
+      - name: Roll out x-bff
+        run: |
+          sudo k3s kubectl -n x-platform create deployment x-bff --image=ghcr.io/sieng-vathana/x-bff:${{ github.sha }} --dry-run=client -o yaml | sudo k3s kubectl apply -f -
+          sudo k3s kubectl -n x-platform expose deployment x-bff --port=8080 --target-port=8080 --dry-run=client -o yaml | sudo k3s kubectl apply -f -
+          sudo k3s kubectl -n x-platform set env deployment/x-bff SERVER_PORT=8080 SPRING_PROFILES_ACTIVE=production USER_SERVICE_URL=http://x-user-service.x-platform.svc.cluster.local:8080/internal/users SPRING_DATASOURCE_URL=jdbc:mysql://mysql.x-platform.svc.cluster.local:3306/x_prod SPRING_JPA_HIBERNATE_DDL_AUTO=update --from=secret/x-app-database
+          sudo k3s kubectl -n x-platform rollout status deployment/x-bff --timeout=180s
