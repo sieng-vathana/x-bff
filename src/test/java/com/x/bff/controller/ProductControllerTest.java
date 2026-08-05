@@ -30,7 +30,7 @@ class ProductControllerTest {
                 """);
         ProductController controller = controller(exchange);
 
-        var response = controller.getUnits(1L, 2L, 0, 20).block();
+        var response = controller.getUnits(1L, "2", 0, 20).block();
 
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -90,14 +90,14 @@ class ProductControllerTest {
     @Test
     void referenceRoutesRequireTheirDedicatedPermissions() throws Exception {
         Method unitMethod = ProductController.class.getMethod(
-                "getUnits", Long.class, Long.class, int.class, int.class);
+                "getUnits", Long.class, String.class, int.class, int.class);
         Method categoryMethod = ProductController.class.getMethod(
-                "getCategories", Long.class, Long.class, int.class, int.class);
+                "getCategories", Long.class, String.class, int.class, int.class);
 
         assertThat(unitMethod.getAnnotation(PreAuthorize.class).value())
-                .isEqualTo("hasAuthority('x-product:unit')");
+                .isEqualTo("hasAuthority('x-product:unit') or hasAuthority('x-product:read')");
         assertThat(categoryMethod.getAnnotation(PreAuthorize.class).value())
-                .isEqualTo("hasAuthority('x-product:category')");
+                .isEqualTo("hasAuthority('x-product:category') or hasAuthority('x-product:read')");
     }
 
     private ProductController controller(CapturedExchange exchange) {
