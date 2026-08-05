@@ -35,7 +35,7 @@ public class ProductController {
     }
 
     @GetMapping("/units")
-    @PreAuthorize("hasAuthority('x-product:unit')")
+    @PreAuthorize("hasAuthority('x-product:unit') or hasAuthority('x-product:read')")
     public Mono<ResponseEntity<?>> getUnits(
             @RequestParam Long businessId,
             @RequestParam(required = false) String storeId,
@@ -55,7 +55,7 @@ public class ProductController {
     }
 
     @GetMapping("/units/{id}")
-    @PreAuthorize("hasAuthority('x-product:unit')")
+    @PreAuthorize("hasAuthority('x-product:unit') or hasAuthority('x-product:read')")
     public Mono<ResponseEntity<?>> getUnit(
             @PathVariable Long id,
             @RequestParam Long businessId) {
@@ -93,7 +93,7 @@ public class ProductController {
     }
 
     @GetMapping("/categories")
-    @PreAuthorize("hasAuthority('x-product:category')")
+    @PreAuthorize("hasAuthority('x-product:category') or hasAuthority('x-product:read')")
     public Mono<ResponseEntity<?>> getCategories(
             @RequestParam Long businessId,
             @RequestParam(required = false) String storeId,
@@ -113,7 +113,7 @@ public class ProductController {
     }
 
     @GetMapping("/categories/{id}")
-    @PreAuthorize("hasAuthority('x-product:category')")
+    @PreAuthorize("hasAuthority('x-product:category') or hasAuthority('x-product:read')")
     public Mono<ResponseEntity<?>> getCategory(
             @PathVariable Long id,
             @RequestParam Long businessId) {
