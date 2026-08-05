@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.web.reactive.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class BffExceptionHandler {
@@ -65,6 +66,11 @@ public class BffExceptionHandler {
                 .map(error -> error.getDefaultMessage())
                 .orElse("Validation failed");
         return new ResponseEntity<>(ApiResponse.error(400, message), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(NoResourceFoundException ex) {
+        return new ResponseEntity<>(ApiResponse.error(404, "Resource not found."), HttpStatus.NOT_FOUND);
     }
 
     @ExceptionHandler(Exception.class)
