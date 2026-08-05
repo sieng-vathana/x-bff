@@ -148,6 +148,63 @@ public class ProductController {
                 .queryParam("businessId", businessId).build(id)));
     }
 
+    @GetMapping("/brands")
+    @PreAuthorize("hasAuthority('x-product:brand') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getBrands(
+            @RequestParam Long businessId,
+            @RequestParam(required = false) Long storeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return forward(productClient.get().uri(uri -> {
+            uri.path("/brands")
+                    .queryParam("businessId", businessId)
+                    .queryParam("page", page)
+                    .queryParam("size", size);
+            if (storeId != null) {
+                uri.queryParam("storeId", storeId);
+            }
+            return uri.build();
+        }));
+    }
+
+    @GetMapping("/brands/{id}")
+    @PreAuthorize("hasAuthority('x-product:brand') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getBrand(
+            @PathVariable Long id,
+            @RequestParam Long businessId) {
+        return forward(productClient.get().uri(uri -> uri.path("/brands/{id}")
+                .queryParam("businessId", businessId).build(id)));
+    }
+
+    @PostMapping("/brands")
+    @PreAuthorize("hasAuthority('x-product:brand')")
+    public Mono<ResponseEntity<?>> createBrand(@RequestBody JsonNode request) {
+        return forward(productClient.post().uri("/brands")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @PutMapping("/brands/{id}")
+    @PreAuthorize("hasAuthority('x-product:brand')")
+    public Mono<ResponseEntity<?>> updateBrand(
+            @PathVariable Long id,
+            @RequestParam Long businessId,
+            @RequestBody JsonNode request) {
+        return forward(productClient.put().uri(uri -> uri.path("/brands/{id}")
+                        .queryParam("businessId", businessId).build(id))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @DeleteMapping("/brands/{id}")
+    @PreAuthorize("hasAuthority('x-product:brand')")
+    public Mono<ResponseEntity<?>> deleteBrand(
+            @PathVariable Long id,
+            @RequestParam Long businessId) {
+        return forward(productClient.delete().uri(uri -> uri.path("/brands/{id}")
+                .queryParam("businessId", businessId).build(id)));
+    }
+
     private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
