@@ -208,6 +208,64 @@ public class ProductController {
                 .queryParam("businessId", businessId).build(id)));
     }
 
+    @GetMapping("/taxes")
+    @PreAuthorize("hasAuthority('x-product:tax') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getTaxes(
+            @RequestParam Long businessId,
+            @RequestParam(required = false) String storeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Long numericStoreId = parseLongQuietly(storeId);
+        return forward(productClient.get().uri(uri -> {
+            uri.path("/taxes")
+                    .queryParam("businessId", businessId)
+                    .queryParam("page", page)
+                    .queryParam("size", size);
+            if (numericStoreId != null) {
+                uri.queryParam("storeId", numericStoreId);
+            }
+            return uri.build();
+        }));
+    }
+
+    @GetMapping("/taxes/{id}")
+    @PreAuthorize("hasAuthority('x-product:tax') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getTax(
+            @PathVariable Long id,
+            @RequestParam Long businessId) {
+        return forward(productClient.get().uri(uri -> uri.path("/taxes/{id}")
+                .queryParam("businessId", businessId).build(id)));
+    }
+
+    @PostMapping("/taxes")
+    @PreAuthorize("hasAuthority('x-product:tax')")
+    public Mono<ResponseEntity<?>> createTax(@RequestBody JsonNode request) {
+        return forward(productClient.post().uri("/taxes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @PutMapping("/taxes/{id}")
+    @PreAuthorize("hasAuthority('x-product:tax')")
+    public Mono<ResponseEntity<?>> updateTax(
+            @PathVariable Long id,
+            @RequestParam Long businessId,
+            @RequestBody JsonNode request) {
+        return forward(productClient.put().uri(uri -> uri.path("/taxes/{id}")
+                        .queryParam("businessId", businessId).build(id))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @DeleteMapping("/taxes/{id}")
+    @PreAuthorize("hasAuthority('x-product:tax')")
+    public Mono<ResponseEntity<?>> deleteTax(
+            @PathVariable Long id,
+            @RequestParam Long businessId) {
+        return forward(productClient.delete().uri(uri -> uri.path("/taxes/{id}")
+                .queryParam("businessId", businessId).build(id)));
+    }
+
     private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
