@@ -38,16 +38,17 @@ public class ProductController {
     @PreAuthorize("hasAuthority('x-product:unit')")
     public Mono<ResponseEntity<?>> getUnits(
             @RequestParam Long businessId,
-            @RequestParam(required = false) Long storeId,
+            @RequestParam(required = false) String storeId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        Long numericStoreId = parseLongQuietly(storeId);
         return forward(productClient.get().uri(uri -> {
             uri.path("/units")
                     .queryParam("businessId", businessId)
                     .queryParam("page", page)
                     .queryParam("size", size);
-            if (storeId != null) {
-                uri.queryParam("storeId", storeId);
+            if (numericStoreId != null) {
+                uri.queryParam("storeId", numericStoreId);
             }
             return uri.build();
         }));
@@ -95,16 +96,17 @@ public class ProductController {
     @PreAuthorize("hasAuthority('x-product:category')")
     public Mono<ResponseEntity<?>> getCategories(
             @RequestParam Long businessId,
-            @RequestParam(required = false) Long storeId,
+            @RequestParam(required = false) String storeId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        Long numericStoreId = parseLongQuietly(storeId);
         return forward(productClient.get().uri(uri -> {
             uri.path("/categories")
                     .queryParam("businessId", businessId)
                     .queryParam("page", page)
                     .queryParam("size", size);
-            if (storeId != null) {
-                uri.queryParam("storeId", storeId);
+            if (numericStoreId != null) {
+                uri.queryParam("storeId", numericStoreId);
             }
             return uri.build();
         }));
@@ -152,16 +154,17 @@ public class ProductController {
     @PreAuthorize("hasAuthority('x-product:brand') or hasAuthority('x-product:read')")
     public Mono<ResponseEntity<?>> getBrands(
             @RequestParam Long businessId,
-            @RequestParam(required = false) Long storeId,
+            @RequestParam(required = false) String storeId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        Long numericStoreId = parseLongQuietly(storeId);
         return forward(productClient.get().uri(uri -> {
             uri.path("/brands")
                     .queryParam("businessId", businessId)
                     .queryParam("page", page)
                     .queryParam("size", size);
-            if (storeId != null) {
-                uri.queryParam("storeId", storeId);
+            if (numericStoreId != null) {
+                uri.queryParam("storeId", numericStoreId);
             }
             return uri.build();
         }));
@@ -209,5 +212,14 @@ public class ProductController {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
                 .map(body -> XUtil.toJsonResponse(body, response.statusCode())));
+    }
+
+    private Long parseLongQuietly(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }
