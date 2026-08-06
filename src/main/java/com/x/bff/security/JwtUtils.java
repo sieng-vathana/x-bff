@@ -36,8 +36,8 @@ public class JwtUtils {
 
     public JwtUtils(
             @Value("${jwt.secret}") String secret,
-            @Value("${jwt.expiration}") long expiration,
-            @Value("${jwt.refresh-expiration}") long refreshExpiration) {
+            @Value("${jwt.expiration:1800000}") long expiration,
+            @Value("${jwt.refresh-expiration:2592000000}") long refreshExpiration) {
         this.expiration = expiration;
         this.refreshExpiration = refreshExpiration;
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
