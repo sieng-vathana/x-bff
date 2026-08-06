@@ -30,8 +30,50 @@ public class ProductController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('x-product:read')")
-    public Mono<ResponseEntity<?>> getProducts() {
-        return forward(productClient.get());
+    public Mono<ResponseEntity<?>> getProducts(
+            @RequestParam(required = false) String storeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Long numericStoreId = parseLongQuietly(storeId);
+        return forward(productClient.get().uri(uri -> {
+            uri.path("")
+                    .queryParam("page", page)
+                    .queryParam("size", size);
+            if (numericStoreId != null) {
+                uri.queryParam("storeId", numericStoreId);
+            }
+            return uri.build();
+        }));
+    }
+
+    @GetMapping("/{id:[0-9]+}")
+    @PreAuthorize("hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getProductById(@PathVariable Long id) {
+        return forward(productClient.get().uri(uri -> uri.path("/{id}").build(id)));
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('x-product:create') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> createProduct(@RequestBody JsonNode request) {
+        return forward(productClient.post().uri("")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @PutMapping("/{id:[0-9]+}")
+    @PreAuthorize("hasAuthority('x-product:update') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> updateProduct(
+            @PathVariable Long id,
+            @RequestBody JsonNode request) {
+        return forward(productClient.put().uri(uri -> uri.path("/{id}").build(id))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @DeleteMapping("/{id:[0-9]+}")
+    @PreAuthorize("hasAuthority('x-product:delete') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> deleteProduct(@PathVariable Long id) {
+        return forward(productClient.delete().uri(uri -> uri.path("/{id}").build(id)));
     }
 
     @GetMapping("/units")
