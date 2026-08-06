@@ -308,6 +308,43 @@ public class ProductController {
                 .queryParam("businessId", businessId).build(id)));
     }
 
+    @GetMapping("/suppliers")
+    @PreAuthorize("hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getSuppliers(
+            @RequestParam Long businessId,
+            @RequestParam(required = false) String storeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        Long numericStoreId = parseLongQuietly(storeId);
+        return forward(productClient.get().uri(uri -> {
+            uri.path("/suppliers")
+                    .queryParam("businessId", businessId)
+                    .queryParam("page", page)
+                    .queryParam("size", size);
+            if (numericStoreId != null) {
+                uri.queryParam("storeId", numericStoreId);
+            }
+            return uri.build();
+        }));
+    }
+
+    @GetMapping("/suppliers/{id}")
+    @PreAuthorize("hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getSupplier(
+            @PathVariable Long id,
+            @RequestParam Long businessId) {
+        return forward(productClient.get().uri(uri -> uri.path("/suppliers/{id}")
+                .queryParam("businessId", businessId).build(id)));
+    }
+
+    @PostMapping("/suppliers")
+    @PreAuthorize("hasAuthority('x-product:create') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> createSupplier(@RequestBody JsonNode request) {
+        return forward(productClient.post().uri("/suppliers")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
     private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
