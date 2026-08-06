@@ -345,6 +345,19 @@ public class ProductController {
                 .bodyValue(request));
     }
 
+    @GetMapping("/attributes")
+    @PreAuthorize("hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getAttributes(@RequestParam Long businessId) {
+        return forward(productClient.get().uri(uri -> uri.path("/attributes")
+                .queryParam("businessId", businessId).build()));
+    }
+
+    @GetMapping("/attributes/{id}/values")
+    @PreAuthorize("hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getAttributeValues(@PathVariable Long id) {
+        return forward(productClient.get().uri("/attributes/" + id + "/values"));
+    }
+
     private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
