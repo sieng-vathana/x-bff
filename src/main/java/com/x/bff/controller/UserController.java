@@ -25,7 +25,7 @@ public class UserController {
     private final WebClient userClient;
 
     public UserController(ServiceClientFactory clientFactory) {
-        this.userClient = clientFactory.forService("user", "/internal/users");
+        this.userClient = clientFactory.forService("user", "");
     }
 
     @GetMapping
