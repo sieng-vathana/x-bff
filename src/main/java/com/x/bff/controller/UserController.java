@@ -33,7 +33,7 @@ public class UserController {
     public Mono<ResponseEntity<?>> getUsers(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return forward(userClient.get().uri(uri -> uri.path("")
+        return forward(userClient.get().uri(uri -> uri
                 .queryParam("page", page)
                 .queryParam("size", size)
                 .build()));
@@ -48,7 +48,7 @@ public class UserController {
     @PostMapping
     @PreAuthorize("hasAuthority('x-user:create') or hasAuthority('x-user:read')")
     public Mono<ResponseEntity<?>> createUser(@RequestBody JsonNode request) {
-        return forward(userClient.post().uri("")
+        return forward(userClient.post()
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request));
     }
