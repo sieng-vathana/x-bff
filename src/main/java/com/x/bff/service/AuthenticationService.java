@@ -32,6 +32,7 @@ public class AuthenticationService {
     private final UserServiceClient userServiceClient;
     private final WebClient businessClient;
     private final WebClient storeClient;
+    private final WebClient customerClient;
     private final StoreImageUrlResolver storeImageUrlResolver;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -44,6 +45,7 @@ public class AuthenticationService {
         this.userServiceClient = userServiceClient;
         this.businessClient = clientFactory.forService("business", "/api/v1/businesses");
         this.storeClient = clientFactory.forService("store", "/api/v1/stores");
+        this.customerClient = clientFactory.forService("customer", "/internal/marketplace");
         this.storeImageUrlResolver = storeImageUrlResolver;
     }
 
@@ -77,8 +79,20 @@ public class AuthenticationService {
                         request.fullName(), request.username(), request.password(), request.email(), request.phone())
                 .flatMap(user -> createBusiness(user.id(), request)
                         .flatMap(business -> createStore(business.id(), request)
-                                .flatMap(store -> userServiceClient.assignOwnerStoreMembership(user.id(), store.id())
+                                .flatMap(store -> createMarketplaceCustomer(user, business, store, request)
+                                        .then(userServiceClient.assignOwnerStoreMembership(user.id(), store.id()))
                                         .then(authenticate(new AuthRequest(request.username(), request.password()), channel)))));
+    }
+
+    private Mono<Void> createMarketplaceCustomer(
+            UserServiceClient.RegisteredUser user, BusinessResponse business, StoreResponse store, RegistrationRequest request) {
+        return customerClient.post()
+                .uri("/customer")
+                .bodyValue(new MarketplaceCustomerCommand(
+                        user.id(), business.id(), store.id(), request.fullName(), request.phone(), request.email()))
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<Object>>() {})
+                .then();
     }
 
     private Mono<BusinessResponse> createBusiness(Long userId, RegistrationRequest request) {
@@ -107,6 +121,10 @@ public class AuthenticationService {
             Long ownerUserId, String name, String code, String defaultCurrencyCode,
             String taxRegistrationNumber, String taxRegistrationLabel, Boolean pricesIncludeTax,
             String timeZone, Integer fiscalYearStartMonth) {
+    }
+
+    private record MarketplaceCustomerCommand(
+            Long userId, Long businessId, Long storeId, String fullName, String phone, String email) {
     }
 
     private Mono<UserCredentialsResponse> findUser(String username) {

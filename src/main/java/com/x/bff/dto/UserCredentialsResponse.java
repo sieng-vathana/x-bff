@@ -12,6 +12,16 @@ import java.util.Set;
 public class UserCredentialsResponse {
     private Long id;
     private String username;
+    private String fullName;
+    private String email;
     private String password;
     private Set<String> permissions;
+
+    /** Keeps the authentication service's existing constructor contract. */
+    public UserCredentialsResponse(Long id, String username, String password, Set<String> permissions) {
+        this.id = id;
+        this.username = username;
+        this.password = password;
+        this.permissions = permissions;
+    }
 }
