@@ -49,7 +49,9 @@ public class StoreImageUrlResolver {
         return Flux.fromIterable(store.images())
                 .concatMap(image -> resolve(image.imageUrl())
                         .map(file -> new StoreImageResponse(
-                                image.id(), file.url(), file.id(), image.isPrimary(), image.sortOrder())))
+                                image.id(), file.url(), file.id() == null ? image.fileId() : file.id(),
+                                image.isPrimary(), image.sortOrder()))
+                        .onErrorResume(ex -> Mono.just(image)))
                 .collectList()
                 .map(images -> new StoreResponse(
                         store.id(), store.businessId(), store.name(), store.code(), store.addressLine1(),
@@ -103,6 +105,7 @@ public class StoreImageUrlResolver {
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoredFileResponse>>() {})
                 .map(ApiResponse::getData)
+                .filter(java.util.Objects::nonNull)
                 .map(file -> new ResolvedImageUrl(file.url(), file.id()));
     }
 
