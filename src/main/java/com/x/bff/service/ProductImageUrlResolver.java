@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sharedlib.response.ApiResponse;
+import com.sharedlib.response.PageResponse;
+import com.x.bff.dto.MarketplaceProductResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -69,6 +71,29 @@ public class ProductImageUrlResolver {
                     log.warn("Unable to refresh product image URLs; returning the original response", exception);
                     return Mono.just(rawResponse);
                 });
+    }
+
+    public Mono<PageResponse<MarketplaceProductResponse>> resolveMarketplacePage(
+            PageResponse<MarketplaceProductResponse> page) {
+        if (page == null || page.content() == null || page.content().isEmpty()) {
+            return Mono.just(page);
+        }
+        return Flux.fromIterable(page.content())
+                .concatMap(product -> {
+                    if (product.thumbnail() == null || product.thumbnail().isBlank()) {
+                        return Mono.just(product);
+                    }
+                    return resolve(product.thumbnail())
+                            .map(thumbnail -> new MarketplaceProductResponse(
+                                    product.productId(), product.storeId(), product.productName(), product.shortName(),
+                                    thumbnail, product.description(), product.categoryId(), product.categoryName(),
+                                    product.currencyCode(), product.onlinePrice(), product.compareAtPrice(),
+                                    product.quantity(), product.featured()))
+                            .defaultIfEmpty(product);
+                })
+                .collectList()
+                .map(content -> new PageResponse<>(
+                        content, page.page(), page.size(), page.totalElements(), page.totalPages(), page.hasNext()));
     }
 
     private void collectProductImageFields(JsonNode root, List<ImageField> fields) {

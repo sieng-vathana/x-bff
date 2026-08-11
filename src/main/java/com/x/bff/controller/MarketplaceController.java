@@ -9,6 +9,7 @@ import com.x.bff.dto.MarketplaceProductView;
 import com.x.bff.dto.MarketplaceStoreResponse;
 import com.x.bff.dto.MarketplaceSummaryResponse;
 import com.x.bff.service.ServiceClientFactory;
+import com.x.bff.service.ProductImageUrlResolver;
 import com.x.bff.service.StoreImageUrlResolver;
 import com.x.bff.service.UserServiceClient;
 import jakarta.validation.constraints.Max;
@@ -52,16 +53,19 @@ public class MarketplaceController {
     private final WebClient storeClient;
     private final WebClient customerClient;
     private final UserServiceClient userServiceClient;
+    private final ProductImageUrlResolver productImageUrlResolver;
     private final StoreImageUrlResolver storeImageUrlResolver;
 
     public MarketplaceController(
             ServiceClientFactory clientFactory,
             UserServiceClient userServiceClient,
+            ProductImageUrlResolver productImageUrlResolver,
             StoreImageUrlResolver storeImageUrlResolver) {
         this.productClient = clientFactory.forService("product", "/api/v1/marketplace");
         this.storeClient = clientFactory.forService("store", "/api/v1/stores");
         this.customerClient = clientFactory.forService("customer", "/internal/marketplace");
         this.userServiceClient = userServiceClient;
+        this.productImageUrlResolver = productImageUrlResolver;
         this.storeImageUrlResolver = storeImageUrlResolver;
     }
 
@@ -78,7 +82,8 @@ public class MarketplaceController {
                         .build())
                 .retrieve()
                 .bodyToMono(PRODUCTS_TYPE)
-                .map(ApiResponse::getData);
+                .map(ApiResponse::getData)
+                .flatMap(productImageUrlResolver::resolveMarketplacePage);
 
         Mono<PageResponse<MarketplaceCategoryResponse>> categories = productClient.get()
                 .uri(uri -> uri.path("/categories")
