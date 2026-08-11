@@ -17,5 +17,7 @@ services:
     base-url: http://127.0.0.1:8085
   order:
     base-url: http://127.0.0.1:8083
+  payment:
+    base-url: http://127.0.0.1:8084
   storage:
     base-url: http://127.0.0.1:8088
