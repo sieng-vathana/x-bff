@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Objects;
 
 @RestController
@@ -56,7 +57,10 @@ public class BusinessController {
                                 request.fiscalYearStartMonth()))
                         .retrieve()
                         .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
-                        .map(ApiResponse::getData))
+                        .map(ApiResponse::getData)
+                        .flatMap(response -> userServiceClient.ensureOwnerBusinessAccess(
+                                        user.getId(), response.id(), List.of())
+                                .thenReturn(response)))
                 .map(response -> ResponseEntity.status(HttpStatus.CREATED)
                         .body(ApiResponse.success(HttpStatus.CREATED.value(), "Business created", response)));
     }
@@ -67,16 +71,13 @@ public class BusinessController {
             @PathVariable Long id,
             @Valid @RequestBody UpdateBusinessRequest request,
             Authentication authentication) {
-        return currentUser(authentication)
-                .flatMap(user -> businessClient.put()
+        return requireBusinessAccess(id, authentication)
+                .then(businessClient.put()
                         .uri("/{id}", id)
                         .bodyValue(request)
                         .retrieve()
                         .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
-                        .map(ApiResponse::getData)
-                        .filter(business -> Objects.equals(user.getId(), business.ownerUserId()))
-                        .switchIfEmpty(Mono.error(new org.springframework.security.access.AccessDeniedException(
-                                "Business does not belong to the authenticated user"))))
+                        .map(ApiResponse::getData))
                 .map(business -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Business updated", business)));
     }
 
@@ -85,15 +86,12 @@ public class BusinessController {
     public Mono<ResponseEntity<ApiResponse<BusinessResponse>>> getById(
             @PathVariable Long id,
             Authentication authentication) {
-        return currentUser(authentication)
-                .flatMap(user -> businessClient.get()
+        return requireBusinessAccess(id, authentication)
+                .then(businessClient.get()
                         .uri("/{id}", id)
                         .retrieve()
                         .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
-                        .map(ApiResponse::getData)
-                        .filter(business -> Objects.equals(user.getId(), business.ownerUserId()))
-                        .switchIfEmpty(Mono.error(new org.springframework.security.access.AccessDeniedException(
-                                "Business does not belong to the authenticated user"))))
+                        .map(ApiResponse::getData))
                 .map(business -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), business)));
     }
 
@@ -111,6 +109,24 @@ public class BusinessController {
 
     private Mono<UserCredentialsResponse> currentUser(Authentication authentication) {
         return userServiceClient.findByUsername(authentication.getName());
+    }
+
+    private Mono<Void> requireBusinessAccess(Long businessId, Authentication authentication) {
+        return currentUser(authentication)
+                .flatMap(user -> {
+                    if (user.getBusinessIds() != null && user.getBusinessIds().contains(businessId)) {
+                        return Mono.empty();
+                    }
+                    return businessClient.get()
+                            .uri("/{id}", businessId)
+                            .retrieve()
+                            .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
+                            .map(ApiResponse::getData)
+                            .filter(business -> Objects.equals(user.getId(), business.ownerUserId()))
+                            .switchIfEmpty(Mono.error(new org.springframework.security.access.AccessDeniedException(
+                                    "User does not have access to this business")));
+                })
+                .then();
     }
 
     private record UpdateBusinessRequest(

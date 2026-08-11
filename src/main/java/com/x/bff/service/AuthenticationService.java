@@ -80,7 +80,8 @@ public class AuthenticationService {
                 .flatMap(user -> createBusiness(user.id(), request)
                         .flatMap(business -> createStore(business.id(), request)
                                 .flatMap(store -> createMarketplaceCustomer(user, business, store, request)
-                                        .then(userServiceClient.assignOwnerStoreMembership(user.id(), store.id()))
+                                        .then(userServiceClient.ensureOwnerBusinessAccess(
+                                                user.id(), business.id(), List.of(store.id())))
                                         .then(authenticate(new AuthRequest(request.username(), request.password()), channel)))));
     }
 
@@ -137,20 +138,42 @@ public class AuthenticationService {
     private Mono<ApiResponse<AuthResponse>> createTokenResponseWithBusiness(
             UserCredentialsResponse user,
             ClientChannel channel) {
-        return findPrimaryBusiness(user.getId())
+        return findPrimaryBusiness(user)
                 .flatMap(business -> findStores(business.id())
-                        .map(stores -> createTokenResponse(user, channel, business, stores)))
+                        .flatMap(stores -> ensureOwnerAccessWhenApplicable(user, business, stores)
+                                .then(userServiceClient.findByUsername(user.getUsername(), business.id()))
+                                .map(scopedUser -> createTokenResponse(
+                                        scopedUser,
+                                        channel,
+                                        business,
+                                        stores.stream()
+                                                .filter(store -> scopedUser.getStoreIds() != null
+                                                        && scopedUser.getStoreIds().contains(store.id()))
+                                                .toList()))))
                 .switchIfEmpty(Mono.fromSupplier(() -> createTokenResponse(user, channel, null, List.of())));
     }
 
-    private Mono<BusinessResponse> findPrimaryBusiness(Long userId) {
-        return businessClient.get()
-                .uri(uriBuilder -> uriBuilder.queryParam("ownerUserId", userId).build())
+    private Mono<BusinessResponse> findPrimaryBusiness(UserCredentialsResponse user) {
+        Mono<BusinessResponse> ownedBusiness = businessClient.get()
+                .uri(uriBuilder -> uriBuilder.queryParam("ownerUserId", user.getId()).build())
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<List<BusinessResponse>>>() {})
                 .map(ApiResponse::getData)
                 .flatMapIterable(businesses -> businesses == null ? List.of() : businesses)
                 .next();
+        Mono<BusinessResponse> membershipBusiness = Mono.justOrEmpty(user.getBusinessIds())
+                .flatMapIterable(ids -> ids.stream().sorted().toList())
+                .next()
+                .flatMap(this::findBusinessById);
+        return ownedBusiness.switchIfEmpty(membershipBusiness);
+    }
+
+    private Mono<BusinessResponse> findBusinessById(Long businessId) {
+        return businessClient.get()
+                .uri("/{id}", businessId)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
+                .map(ApiResponse::getData);
     }
 
     private Mono<List<StoreResponse>> findStores(Long businessId) {
@@ -165,6 +188,19 @@ public class AuthenticationService {
                 .map(ApiResponse::getData)
                 .flatMap(storeImageUrlResolver::resolvePage)
                 .map(page -> page == null || page.content() == null ? List.of() : page.content());
+    }
+
+    private Mono<Void> ensureOwnerAccessWhenApplicable(
+            UserCredentialsResponse user,
+            BusinessResponse business,
+            List<StoreResponse> stores) {
+        if (!java.util.Objects.equals(user.getId(), business.ownerUserId())) {
+            return Mono.empty();
+        }
+        return userServiceClient.ensureOwnerBusinessAccess(
+                user.getId(),
+                business.id(),
+                stores.stream().map(StoreResponse::id).toList());
     }
 
     private ApiResponse<AuthResponse> createTokenResponse(

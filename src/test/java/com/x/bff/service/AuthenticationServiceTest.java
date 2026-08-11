@@ -41,14 +41,16 @@ class AuthenticationServiceTest {
                 .thenReturn(businessClient());
         when(serviceClientFactory.forService("store", "/api/v1/stores"))
                 .thenReturn(storeClient());
+        when(userServiceClient.ensureOwnerBusinessAccess(anyLong(), anyLong(), any()))
+                .thenReturn(Mono.empty());
     }
 
     @Test
     void authenticateReturnsTokensForValidBcryptCredentials() {
         String hashed = passwordEncoder.encode("pass");
-        when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(
-                new com.x.bff.dto.UserCredentialsResponse(
-                        1L, "user", hashed, Set.of("x-product:read"))));
+        var credentials = credentials(hashed, Set.of("x-product:read"), Set.of(21L));
+        when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(credentials));
+        when(userServiceClient.findByUsername("user", 12L)).thenReturn(Mono.just(credentials));
         when(jwtUtils.generateToken(eq("user"), eq(Set.of("x-product:read")), eq("mobile"), eq(1L)))
                 .thenReturn("access");
         when(jwtUtils.generateRefreshToken(eq("user"), eq("mobile"))).thenReturn("refresh");
@@ -109,9 +111,9 @@ class AuthenticationServiceTest {
         String hashed = passwordEncoder.encode("pass");
         when(jwtUtils.extractUsername("refresh-jwt")).thenReturn("user");
         when(jwtUtils.validateRefreshToken("refresh-jwt", "user")).thenReturn(true);
-        when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(
-                new com.x.bff.dto.UserCredentialsResponse(
-                        1L, "user", hashed, Set.of("x-product:read"))));
+        var credentials = credentials(hashed, Set.of("x-product:read"), Set.of(21L));
+        when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(credentials));
+        when(userServiceClient.findByUsername("user", 12L)).thenReturn(Mono.just(credentials));
         when(jwtUtils.generateToken(any(), any(), any(), anyLong())).thenReturn("access2");
         when(jwtUtils.generateRefreshToken(any(), any())).thenReturn("refresh2");
         when(jwtUtils.getAccessExpirationSeconds()).thenReturn(900L);
@@ -133,6 +135,16 @@ class AuthenticationServiceTest {
                                 """)
                         .build()))
                 .build();
+    }
+
+    private static com.x.bff.dto.UserCredentialsResponse credentials(
+            String password,
+            Set<String> permissions,
+            Set<Long> storeIds) {
+        var credentials = new com.x.bff.dto.UserCredentialsResponse(1L, "user", password, permissions);
+        credentials.setBusinessIds(Set.of(12L));
+        credentials.setStoreIds(storeIds);
+        return credentials;
     }
 
     private static WebClient storeClient() {

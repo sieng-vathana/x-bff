@@ -16,6 +16,8 @@ public class UserCredentialsResponse {
     private String email;
     private String password;
     private Set<String> permissions;
+    private Set<Long> businessIds;
+    private Set<Long> storeIds;
 
     /** Keeps the authentication service's existing constructor contract. */
     public UserCredentialsResponse(Long id, String username, String password, Set<String> permissions) {

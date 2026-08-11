@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
+
 @Service
 public class UserServiceClient {
 
@@ -29,6 +31,17 @@ public class UserServiceClient {
                 .map(ApiResponse::getData);
     }
 
+    public Mono<UserCredentialsResponse> findByUsername(String username, Long businessId) {
+        return userClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/{username}")
+                        .queryParam("businessId", businessId)
+                        .build(username))
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<UserCredentialsResponse>>() {})
+                .map(ApiResponse::getData);
+    }
+
     public Mono<RegisteredUser> register(String fullName, String username, String password, String email, String phone) {
         return userClient.post()
                 .bodyValue(new UserRegistrationCommand(fullName, username, password, email, phone))
@@ -45,7 +58,22 @@ public class UserServiceClient {
                 .then();
     }
 
+    public Mono<Void> ensureOwnerBusinessAccess(
+            Long userId,
+            Long businessId,
+            List<Long> storeIds) {
+        return userClient.post()
+                .uri("/{userId}/businesses/{businessId}/owner-access", userId, businessId)
+                .bodyValue(new OwnerAccessCommand(storeIds))
+                .retrieve()
+                .toBodilessEntity()
+                .then();
+    }
+
     private record UserRegistrationCommand(String fullName, String username, String password, String email, String phone) {
+    }
+
+    private record OwnerAccessCommand(List<Long> storeIds) {
     }
 
     public record RegisteredUser(Long id) {

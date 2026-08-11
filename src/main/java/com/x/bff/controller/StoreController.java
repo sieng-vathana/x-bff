@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Objects;
 
 @RestController
@@ -57,13 +58,17 @@ public class StoreController {
             @Valid @RequestBody CreateStoreRequest request,
             Authentication authentication) {
         return withStorageUrls(request)
-                .flatMap(resolvedRequest -> requireBusinessOwnership(resolvedRequest.businessId(), authentication)
+                .flatMap(resolvedRequest -> requireBusinessAccess(resolvedRequest.businessId(), authentication)
                 .then(storeClient.post()
                         .bodyValue(resolvedRequest)
                         .retrieve()
                         .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
                         .map(ApiResponse::getData)
-                        .flatMap(storeImageUrlResolver::resolveResponse)))
+                        .flatMap(storeImageUrlResolver::resolveResponse)
+                        .flatMap(response -> findBusiness(response.businessId())
+                                .flatMap(business -> userServiceClient.ensureOwnerBusinessAccess(
+                                                business.ownerUserId(), response.businessId(), List.of(response.id()))
+                                        .thenReturn(response)))))
                 .map(response -> ResponseEntity.status(HttpStatus.CREATED)
                         .body(ApiResponse.success(HttpStatus.CREATED.value(), "Store created", response)));
     }
@@ -78,7 +83,7 @@ public class StoreController {
                         .retrieve()
                         .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
                         .map(ApiResponse::getData)
-                .flatMap(store -> requireBusinessOwnership(store.businessId(), authentication)
+                .flatMap(store -> requireBusinessAccess(store.businessId(), authentication)
                         .then(storeImageUrlResolver.resolveResponse(store)))
                 .map(store -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), store)));
     }
@@ -95,7 +100,7 @@ public class StoreController {
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
                 .map(ApiResponse::getData)
-                .flatMap(store -> requireBusinessOwnership(store.businessId(), authentication)
+                .flatMap(store -> requireBusinessAccess(store.businessId(), authentication)
                         .then(storeClient.put()
                                 .uri("/{id}", id)
                                 .bodyValue(resolvedRequest)
@@ -113,7 +118,7 @@ public class StoreController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             Authentication authentication) {
-        return requireBusinessOwnership(businessId, authentication)
+        return requireBusinessAccess(businessId, authentication)
                 .then(storeClient.get()
                         .uri(uriBuilder -> uriBuilder
                                 .queryParam("businessId", businessId)
@@ -127,17 +132,26 @@ public class StoreController {
                 .map(stores -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), stores)));
     }
 
-    private Mono<Void> requireBusinessOwnership(Long businessId, Authentication authentication) {
+    private Mono<Void> requireBusinessAccess(Long businessId, Authentication authentication) {
         return currentUser(authentication)
-                .flatMap(user -> businessClient.get()
-                        .uri("/{id}", businessId)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
-                        .map(ApiResponse::getData)
-                        .filter(business -> Objects.equals(user.getId(), business.ownerUserId()))
-                        .switchIfEmpty(Mono.error(new AccessDeniedException(
-                                "Business does not belong to the authenticated user"))))
+                .flatMap(user -> {
+                    if (user.getBusinessIds() != null && user.getBusinessIds().contains(businessId)) {
+                        return Mono.empty();
+                    }
+                    return findBusiness(businessId)
+                            .filter(business -> Objects.equals(user.getId(), business.ownerUserId()))
+                            .switchIfEmpty(Mono.error(new AccessDeniedException(
+                                    "User does not have access to this business")));
+                })
                 .then();
+    }
+
+    private Mono<BusinessResponse> findBusiness(Long businessId) {
+        return businessClient.get()
+                .uri("/{id}", businessId)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
+                .map(ApiResponse::getData);
     }
 
     private Mono<UserCredentialsResponse> currentUser(Authentication authentication) {
