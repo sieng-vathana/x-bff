@@ -2,6 +2,7 @@ package com.x.bff.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.x.bff.service.ServiceClientFactory;
+import com.x.bff.service.ProductImageUrlResolver;
 import com.x.bff.utils.XUtil;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -23,9 +24,11 @@ import reactor.core.publisher.Mono;
 public class ProductController {
 
     private final WebClient productClient;
+    private final ProductImageUrlResolver productImageUrlResolver;
 
-    public ProductController(ServiceClientFactory clientFactory) {
+    public ProductController(ServiceClientFactory clientFactory, ProductImageUrlResolver productImageUrlResolver) {
         this.productClient = clientFactory.forService("product", "/api/v1/products");
+        this.productImageUrlResolver = productImageUrlResolver;
     }
 
     @GetMapping
@@ -35,7 +38,7 @@ public class ProductController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Long numericStoreId = parseLongQuietly(storeId);
-        return forward(productClient.get().uri(uri -> {
+        return forwardProduct(productClient.get().uri(uri -> {
             uri.path("")
                     .queryParam("page", page)
                     .queryParam("size", size);
@@ -49,13 +52,13 @@ public class ProductController {
     @GetMapping("/{id:[0-9]+}")
     @PreAuthorize("hasAuthority('x-product:read')")
     public Mono<ResponseEntity<?>> getProductById(@PathVariable Long id) {
-        return forward(productClient.get().uri(uri -> uri.path("/{id}").build(id)));
+        return forwardProduct(productClient.get().uri(uri -> uri.path("/{id}").build(id)));
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('x-product:create') or hasAuthority('x-product:read')")
     public Mono<ResponseEntity<?>> createProduct(@RequestBody JsonNode request) {
-        return forward(productClient.post().uri("")
+        return forwardProduct(productClient.post().uri("")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request));
     }
@@ -65,7 +68,7 @@ public class ProductController {
     public Mono<ResponseEntity<?>> updateProduct(
             @PathVariable Long id,
             @RequestBody JsonNode request) {
-        return forward(productClient.put().uri(uri -> uri.path("/{id}").build(id))
+        return forwardProduct(productClient.put().uri(uri -> uri.path("/{id}").build(id))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request));
     }
@@ -362,6 +365,18 @@ public class ProductController {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
                 .map(body -> XUtil.toJsonResponse(body, response.statusCode())));
+    }
+
+    private Mono<ResponseEntity<?>> forwardProduct(WebClient.RequestHeadersSpec<?> request) {
+        return request.exchangeToMono(response -> response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .flatMap(body -> {
+                    if (!response.statusCode().is2xxSuccessful()) {
+                        return Mono.just(XUtil.toJsonResponse(body, response.statusCode()));
+                    }
+                    return productImageUrlResolver.resolveResponse(body)
+                            .map(resolved -> XUtil.toJsonResponse(resolved, response.statusCode()));
+                }));
     }
 
     private Long parseLongQuietly(String value) {

@@ -2,6 +2,7 @@ package com.x.bff.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.x.bff.service.ServiceClientFactory;
+import com.x.bff.service.ProductImageUrlResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -108,7 +109,7 @@ class ProductControllerTest {
         ServiceClientFactory clientFactory = mock(ServiceClientFactory.class);
         when(clientFactory.forService("product", "/api/v1/products"))
                 .thenReturn(productClient);
-        return new ProductController(clientFactory);
+        return new ProductController(clientFactory, mock(ProductImageUrlResolver.class));
     }
 
     private static final class CapturedExchange {
