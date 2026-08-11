@@ -9,6 +9,7 @@ import com.x.bff.dto.MarketplaceProductView;
 import com.x.bff.dto.MarketplaceStoreResponse;
 import com.x.bff.dto.MarketplaceSummaryResponse;
 import com.x.bff.service.ServiceClientFactory;
+import com.x.bff.service.StoreImageUrlResolver;
 import com.x.bff.service.UserServiceClient;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -51,12 +52,17 @@ public class MarketplaceController {
     private final WebClient storeClient;
     private final WebClient customerClient;
     private final UserServiceClient userServiceClient;
+    private final StoreImageUrlResolver storeImageUrlResolver;
 
-    public MarketplaceController(ServiceClientFactory clientFactory, UserServiceClient userServiceClient) {
+    public MarketplaceController(
+            ServiceClientFactory clientFactory,
+            UserServiceClient userServiceClient,
+            StoreImageUrlResolver storeImageUrlResolver) {
         this.productClient = clientFactory.forService("product", "/api/v1/marketplace");
         this.storeClient = clientFactory.forService("store", "/api/v1/stores");
         this.customerClient = clientFactory.forService("customer", "/internal/marketplace");
         this.userServiceClient = userServiceClient;
+        this.storeImageUrlResolver = storeImageUrlResolver;
     }
 
     @GetMapping("/home")
@@ -134,6 +140,7 @@ public class MarketplaceController {
                 .retrieve()
                 .bodyToMono(STORES_TYPE)
                 .map(ApiResponse::getData)
+                .flatMap(storeImageUrlResolver::resolveMarketplaceStores)
                 .defaultIfEmpty(List.of());
     }
 

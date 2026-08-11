@@ -2,6 +2,7 @@ package com.x.bff.service;
 
 import com.x.bff.dto.StoreImageRequest;
 import com.x.bff.dto.StoreImageResponse;
+import com.x.bff.dto.MarketplaceStoreResponse;
 import com.x.bff.dto.StoreResponse;
 import com.sharedlib.response.ApiResponse;
 import com.sharedlib.response.PageResponse;
@@ -66,6 +67,21 @@ public class StoreImageUrlResolver {
                 .collectList()
                 .map(content -> new PageResponse<>(
                         content, page.page(), page.size(), page.totalElements(), page.totalPages(), page.hasNext()));
+    }
+
+    /**
+     * Marketplace store cards are public, so they must expose browser-ready
+     * storage URLs instead of the authenticated BFF file proxy path.
+     */
+    public Mono<List<MarketplaceStoreResponse>> resolveMarketplaceStores(List<MarketplaceStoreResponse> stores) {
+        if (stores == null || stores.isEmpty()) {
+            return Mono.just(List.of());
+        }
+        return Flux.fromIterable(stores)
+                .concatMap(store -> resolve(store.image())
+                        .map(file -> new MarketplaceStoreResponse(
+                                store.id(), store.name(), store.code(), store.city(), store.countryCode(), file.url())))
+                .collectList();
     }
 
     private Mono<ResolvedImageUrl> resolve(String imageUrl) {

@@ -1,6 +1,7 @@
 package com.x.bff.service;
 
 import com.x.bff.dto.StoreImageResponse;
+import com.x.bff.dto.MarketplaceStoreResponse;
 import com.x.bff.dto.StoreResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -82,5 +83,29 @@ class StoreImageUrlResolverTest {
                 .verifyComplete();
         org.junit.jupiter.api.Assertions.assertEquals(
                 "/internal/files/by-relative-path", requestUri.get().getPath());
+    }
+
+    @Test
+    void resolvesMarketplaceStoreImageToABrowserReadyUrl() {
+        ServiceClientFactory clientFactory = mock(ServiceClientFactory.class);
+        WebClient storageClient = WebClient.builder()
+                .exchangeFunction(request -> Mono.just(ClientResponse.create(HttpStatus.OK)
+                        .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                        .body("""
+                                {"status":1,"code":200,"data":{"id":1,"url":"https://bucket.s3.ap-southeast-1.amazonaws.com/media/store.webp?signature=abc"}}
+                                """)
+                        .build()))
+                .build();
+        when(clientFactory.forService("storage", "/api/v1/files")).thenReturn(storageClient);
+
+        MarketplaceStoreResponse store = new MarketplaceStoreResponse(
+                2L, "Linux", "MAIN", "Phnom Penh", "KH", "/api/v1/files/1/content");
+
+        StepVerifier.create(new StoreImageUrlResolver(clientFactory)
+                        .resolveMarketplaceStores(List.of(store)))
+                .assertNext(resolved -> org.junit.jupiter.api.Assertions.assertEquals(
+                        "https://bucket.s3.ap-southeast-1.amazonaws.com/media/store.webp?signature=abc",
+                        resolved.get(0).image()))
+                .verifyComplete();
     }
 }
