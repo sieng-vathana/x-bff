@@ -75,6 +75,12 @@ public class UserController {
         return forward(userClient.get().uri("/roles"));
     }
 
+    @GetMapping("/roles/{id:[0-9]+}")
+    @PreAuthorize("hasAuthority('x-user:read') or hasAuthority('x-user:create')")
+    public Mono<ResponseEntity<?>> getRoleDetails(@PathVariable Long id) {
+        return forward(userClient.get().uri(uri -> uri.path("/roles/{id}").build(id)));
+    }
+
     private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
