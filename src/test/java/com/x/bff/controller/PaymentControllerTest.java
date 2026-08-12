@@ -1,6 +1,10 @@
 package com.x.bff.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.x.bff.dto.PosOrderItemRequest;
+import com.x.bff.dto.PosQrCheckoutRequest;
+import com.x.bff.dto.PosQrCheckoutResponse;
+import com.x.bff.service.PosQrCheckoutService;
 import com.x.bff.service.ServiceClientFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -13,6 +17,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,14 +64,50 @@ class PaymentControllerTest {
     void paymentTestRoutesRequireCreatePermission() throws Exception {
         Method createQr = PaymentController.class.getMethod("createQr", com.fasterxml.jackson.databind.JsonNode.class);
         Method get = PaymentController.class.getMethod("get", Long.class);
+        Method createPosQr = PaymentController.class.getMethod("createPosQr", PosQrCheckoutRequest.class);
 
         assertThat(createQr.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('x-payment:create')");
         assertThat(get.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')");
+        assertThat(createPosQr.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('x-order:create') and hasAuthority('x-payment:create')");
+    }
+
+    @Test
+    void createPosQrReturnsOneCombinedResponse() throws Exception {
+        CapturedExchange exchange = new CapturedExchange(HttpStatus.CREATED, "{}");
+        PosQrCheckoutService checkoutService = mock(PosQrCheckoutService.class);
+        PosQrCheckoutRequest request = new PosQrCheckoutRequest(
+                2L,
+                2L,
+                0L,
+                6L,
+                "USD",
+                BigDecimal.ZERO,
+                "POS-1",
+                "PAY-1",
+                "Item x1",
+                List.of(new PosOrderItemRequest(2L, 1, null, null, null)));
+        PosQrCheckoutResponse checkout = new PosQrCheckoutResponse(
+                OBJECT_MAPPER.readTree("{\"id\":42,\"orderNo\":\"ORD-42\"}"),
+                OBJECT_MAPPER.readTree("{\"transactionId\":\"XP-42\",\"qrImageDataUrl\":\"data:image/png;base64,UE5H\"}"));
+        when(checkoutService.create(request)).thenReturn(Mono.just(checkout));
+        PaymentController controller = controller(exchange, checkoutService);
+
+        var response = controller.createPosQr(request).block();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getData()).isEqualTo(checkout);
     }
 
     private PaymentController controller(CapturedExchange exchange) {
+        return controller(exchange, mock(PosQrCheckoutService.class));
+    }
+
+    private PaymentController controller(CapturedExchange exchange, PosQrCheckoutService checkoutService) {
         WebClient paymentClient = WebClient.builder()
                 .baseUrl("http://payment-service:8085/api/v1/payments")
                 .exchangeFunction(exchange::exchange)
@@ -73,7 +115,7 @@ class PaymentControllerTest {
         ServiceClientFactory clientFactory = mock(ServiceClientFactory.class);
         when(clientFactory.forService("payment", "/api/v1/payments"))
                 .thenReturn(paymentClient);
-        return new PaymentController(clientFactory);
+        return new PaymentController(clientFactory, checkoutService);
     }
 
     private static final class CapturedExchange {

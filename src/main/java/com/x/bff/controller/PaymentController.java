@@ -1,8 +1,14 @@
 package com.x.bff.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.sharedlib.response.ApiResponse;
+import com.x.bff.dto.PosQrCheckoutRequest;
+import com.x.bff.dto.PosQrCheckoutResponse;
+import com.x.bff.service.PosQrCheckoutService;
 import com.x.bff.service.ServiceClientFactory;
 import com.x.bff.utils.XUtil;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,9 +26,11 @@ import reactor.core.publisher.Mono;
 public class PaymentController {
 
     private final WebClient paymentClient;
+    private final PosQrCheckoutService posQrCheckoutService;
 
-    public PaymentController(ServiceClientFactory clientFactory) {
+    public PaymentController(ServiceClientFactory clientFactory, PosQrCheckoutService posQrCheckoutService) {
         this.paymentClient = clientFactory.forService("payment", "/api/v1/payments");
+        this.posQrCheckoutService = posQrCheckoutService;
     }
 
     @PostMapping
@@ -40,6 +48,18 @@ public class PaymentController {
                 .uri("/qr")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request));
+    }
+
+    @PostMapping("/pos-qr")
+    @PreAuthorize("hasAuthority('x-order:create') and hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<ApiResponse<PosQrCheckoutResponse>>> createPosQr(
+            @Valid @RequestBody PosQrCheckoutRequest request) {
+        return posQrCheckoutService.create(request)
+                .map(response -> ResponseEntity.status(HttpStatus.CREATED)
+                        .body(ApiResponse.success(
+                                HttpStatus.CREATED.value(),
+                                "POS QR checkout created",
+                                response)));
     }
 
     @GetMapping("/{id}")
