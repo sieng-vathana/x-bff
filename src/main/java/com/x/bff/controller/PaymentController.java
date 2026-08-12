@@ -62,6 +62,14 @@ public class PaymentController {
                                 response)));
     }
 
+    @PostMapping("/khqrpay/webhook")
+    public Mono<ResponseEntity<?>> khqrPayWebhook(@RequestBody JsonNode request) {
+        return forward(paymentClient.post()
+                .uri("/khqrpay/webhook")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')")
     public Mono<ResponseEntity<?>> get(@PathVariable Long id) {
