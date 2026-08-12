@@ -9,6 +9,8 @@ import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.Locale;
+
 @Service
 public class ServiceClientFactory {
 
@@ -45,6 +47,11 @@ public class ServiceClientFactory {
                 ? servicePath
                 : "/" + servicePath;
         String serviceUrl = environment.getProperty("services." + serviceName + ".base-url");
+        if (!StringUtils.hasText(serviceUrl)) {
+            String serviceEnvironmentName = serviceName.replace('-', '_').toUpperCase(Locale.ROOT)
+                    + "_SERVICE_URL";
+            serviceUrl = environment.getProperty(serviceEnvironmentName);
+        }
 
         if (StringUtils.hasText(serviceUrl)) {
             return stripTrailingSlash(serviceUrl) + normalizedServicePath;

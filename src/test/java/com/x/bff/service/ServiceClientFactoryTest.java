@@ -30,6 +30,17 @@ class ServiceClientFactoryTest {
     }
 
     @Test
+    void usesServiceUrlEnvironmentVariableWhenBaseUrlIsNotConfigured() {
+        MockEnvironment environment = new MockEnvironment()
+                .withProperty("ORDER_SERVICE_URL", "http://x-order-service:8080/");
+        ServiceClientFactory factory = new ServiceClientFactory(
+                WebClient.builder(), environment, "http://api-gateway:8080");
+
+        assertThat(factory.resolveServiceBaseUrl("order", "/api/v1/orders"))
+                .isEqualTo("http://x-order-service:8080/api/v1/orders");
+    }
+
+    @Test
     void rejectsMissingServiceConfiguration() {
         ServiceClientFactory factory = new ServiceClientFactory(
                 WebClient.builder(), new MockEnvironment(), "");
