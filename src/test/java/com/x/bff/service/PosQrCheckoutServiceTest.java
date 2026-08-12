@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.x.bff.dto.PosOrderItemRequest;
 import com.x.bff.dto.PosQrCheckoutRequest;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -25,6 +27,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PosQrCheckoutServiceTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final byte[] PNG = "test-png".getBytes(StandardCharsets.UTF_8);
+
+    @Test
+    void marksProductionConstructorForSpringInjection() {
+        Constructor<?> productionConstructor = PosQrCheckoutService.class.getConstructors()[0];
+
+        assertThat(productionConstructor.isAnnotationPresent(Autowired.class)).isTrue();
+    }
 
     @Test
     void createsOrderAndPaymentAndEmbedsQrInOneResponse() {

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sharedlib.response.ApiResponse;
 import com.x.bff.dto.PosQrCheckoutRequest;
 import com.x.bff.dto.PosQrCheckoutResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -26,6 +27,7 @@ public class PosQrCheckoutService {
     private final WebClient imageClient;
     private final ObjectMapper objectMapper;
 
+    @Autowired
     public PosQrCheckoutService(
             ServiceClientFactory clientFactory,
             WebClient.Builder webClientBuilder,
