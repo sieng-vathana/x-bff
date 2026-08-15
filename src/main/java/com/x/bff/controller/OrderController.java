@@ -61,6 +61,40 @@ public class OrderController {
                 .bodyValue(request));
     }
 
+    @GetMapping("/holds")
+    @PreAuthorize("hasAuthority('x-order:read')")
+    public Mono<ResponseEntity<?>> getHeldOrders(
+            @RequestParam Long storeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return forward(orderClient.get()
+                .uri(uri -> uri.path("/holds")
+                        .queryParam("storeId", storeId)
+                        .queryParam("page", page)
+                        .queryParam("size", size)
+                        .build()));
+    }
+
+    @PostMapping("/holds")
+    @PreAuthorize("hasAuthority('x-order:create')")
+    public Mono<ResponseEntity<?>> createHeld(@RequestBody JsonNode request) {
+        return forward(orderClient.post().uri("/holds")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @PostMapping("/holds/{id}/resume")
+    @PreAuthorize("hasAuthority('x-order:update') or hasAuthority('x-order:create')")
+    public Mono<ResponseEntity<?>> resumeHeld(@PathVariable Long id) {
+        return forward(orderClient.post().uri("/holds/{id}/resume", id));
+    }
+
+    @PostMapping("/holds/{id}/discard")
+    @PreAuthorize("hasAuthority('x-order:update') or hasAuthority('x-order:create')")
+    public Mono<ResponseEntity<?>> discardHeld(@PathVariable Long id) {
+        return forward(orderClient.post().uri("/holds/{id}/discard", id));
+    }
+
     @PostMapping("/{id}/complete")
     @PreAuthorize("hasAuthority('x-order:update') or hasAuthority('x-order:create')")
     public Mono<ResponseEntity<?>> complete(@PathVariable Long id) {

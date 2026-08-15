@@ -56,6 +56,25 @@ class OrderControllerTest {
         assertThat(paymentExchange.request().url().getQuery()).isEqualTo("orderId=42");
     }
 
+    @Test
+    void getHeldOrdersForwardsStoreAndPageParametersWithoutPaymentLookups() {
+        CapturedExchange orderExchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":{"content":[]}}
+                """);
+        CapturedExchange paymentExchange = new CapturedExchange(HttpStatus.OK, "");
+        OrderController controller = controller(orderExchange, paymentExchange);
+
+        var response = controller.getHeldOrders(4L, 0, 50).block();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(orderExchange.request().method()).isEqualTo(HttpMethod.GET);
+        assertThat(orderExchange.request().url().getPath()).isEqualTo("/api/v1/orders/holds");
+        assertThat(orderExchange.request().url().getQuery())
+                .contains("storeId=4", "page=0", "size=50");
+        assertThat(paymentExchange.request()).isNull();
+    }
+
     private OrderController controller(CapturedExchange orderExchange, CapturedExchange paymentExchange) {
         WebClient orderClient = WebClient.builder()
                 .baseUrl("http://x-order-service:8080/api/v1/orders")
