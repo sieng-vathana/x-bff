@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -27,8 +28,16 @@ public class OrderController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('x-order:read')")
-    public Mono<ResponseEntity<?>> getOrders() {
+    public Mono<ResponseEntity<?>> getOrders(
+            @RequestParam Long storeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
         return orderClient.get()
+                .uri(uri -> uri
+                        .queryParam("storeId", storeId)
+                        .queryParam("page", page)
+                        .queryParam("size", size)
+                        .build())
                 .retrieve()
                 .bodyToMono(String.class)
                 .map(XUtil::toJsonResponse);
