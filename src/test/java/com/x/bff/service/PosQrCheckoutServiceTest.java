@@ -70,6 +70,31 @@ class PosQrCheckoutServiceTest {
         assertThat(imageRequest.get().url().toString()).isEqualTo("https://khqr.cc/api/khqr/XP-42");
     }
 
+    @Test
+    void createsSimulatedCheckoutWithoutFetchingAnExternalQrImage() {
+        CapturedJsonExchange order = new CapturedJsonExchange("""
+                {"status":1,"code":201,"data":{"id":43,"orderNo":"ORD-43","grandTotal":2.00,"currencyCode":"USD"}}
+                """);
+        String qrImage = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
+        CapturedJsonExchange payment = new CapturedJsonExchange("""
+                {"status":1,"code":201,"data":{"transactionId":"SIM-43","qrImageUrl":"%s","provider":"SIMULATED"}}
+                """.formatted(qrImage));
+        AtomicReference<ClientRequest> imageRequest = new AtomicReference<>();
+        WebClient imageClient = WebClient.builder().exchangeFunction(request -> {
+            imageRequest.set(request);
+            return Mono.error(new AssertionError("Simulated QR must not fetch an external image"));
+        }).build();
+        PosQrCheckoutService service = new PosQrCheckoutService(
+                client(order), client(payment), imageClient, OBJECT_MAPPER);
+
+        StepVerifier.create(service.createSimulated(request()))
+                .assertNext(result -> assertThat(result.payment().path("qrImageDataUrl").asText()).isEqualTo(qrImage))
+                .verifyComplete();
+
+        assertThat(payment.request().url().getPath()).isEqualTo("/api/v1/payments/simulated-qr");
+        assertThat(imageRequest.get()).isNull();
+    }
+
     private PosQrCheckoutRequest request() {
         return new PosQrCheckoutRequest(
                 2L,

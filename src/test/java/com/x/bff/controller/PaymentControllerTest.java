@@ -103,6 +103,21 @@ class PaymentControllerTest {
         assertThat(response.getBody().getData()).isEqualTo(checkout);
     }
 
+    @Test
+    void simulateCallbackForwardsToPaymentService() {
+        CapturedExchange exchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":{"id":9,"status":"PAID","provider":"SIMULATED"}}
+                """);
+        PaymentController controller = controller(exchange);
+
+        var response = controller.simulateCallback(9L).block();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.POST);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments/9/simulate-callback");
+    }
+
     private PaymentController controller(CapturedExchange exchange) {
         return controller(exchange, mock(PosQrCheckoutService.class));
     }

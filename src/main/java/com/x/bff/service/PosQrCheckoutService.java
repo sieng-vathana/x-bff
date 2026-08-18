@@ -51,6 +51,14 @@ public class PosQrCheckoutService {
     }
 
     public Mono<PosQrCheckoutResponse> create(PosQrCheckoutRequest request) {
+        return create(request, "/qr");
+    }
+
+    public Mono<PosQrCheckoutResponse> createSimulated(PosQrCheckoutRequest request) {
+        return create(request, "/simulated-qr");
+    }
+
+    private Mono<PosQrCheckoutResponse> create(PosQrCheckoutRequest request, String paymentPath) {
         ObjectNode orderRequest = objectMapper.createObjectNode();
         orderRequest.put("businessId", request.businessId());
         orderRequest.put("storeId", request.storeId());
@@ -70,12 +78,12 @@ public class PosQrCheckoutService {
                 .retrieve()
                 .bodyToMono(JSON_RESPONSE)
                 .map(this::requireData)
-                .flatMap(order -> createPayment(request, order)
+                .flatMap(order -> createPayment(request, order, paymentPath)
                         .flatMap(payment -> embedQrImage(payment)
                                 .map(enrichedPayment -> new PosQrCheckoutResponse(order, enrichedPayment))));
     }
 
-    private Mono<JsonNode> createPayment(PosQrCheckoutRequest request, JsonNode order) {
+    private Mono<JsonNode> createPayment(PosQrCheckoutRequest request, JsonNode order, String paymentPath) {
         long orderId = requiredLong(order, "id");
         String currencyCode = requiredText(order, "currencyCode");
         JsonNode grandTotal = order.get("grandTotal");
@@ -95,7 +103,7 @@ public class PosQrCheckoutService {
         }
 
         return paymentClient.post()
-                .uri("/qr")
+                .uri(paymentPath)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(paymentRequest)
                 .retrieve()
@@ -105,6 +113,11 @@ public class PosQrCheckoutService {
 
     private Mono<JsonNode> embedQrImage(JsonNode payment) {
         String qrImageUrl = requiredText(payment, "qrImageUrl");
+        if (qrImageUrl.startsWith("data:image/")) {
+            ObjectNode enriched = payment.deepCopy();
+            enriched.put("qrImageDataUrl", qrImageUrl);
+            return Mono.just(enriched);
+        }
         URI uri = URI.create(qrImageUrl);
         if (!"https".equalsIgnoreCase(uri.getScheme())
                 || !"khqr.cc".equalsIgnoreCase(uri.getHost())

@@ -62,12 +62,30 @@ public class PaymentController {
                                 response)));
     }
 
+    @PostMapping("/pos-qr-demo")
+    @PreAuthorize("hasAuthority('x-order:create') and hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<ApiResponse<PosQrCheckoutResponse>>> createSimulatedPosQr(
+            @Valid @RequestBody PosQrCheckoutRequest request) {
+        return posQrCheckoutService.createSimulated(request)
+                .map(response -> ResponseEntity.status(HttpStatus.CREATED)
+                        .body(ApiResponse.success(
+                                HttpStatus.CREATED.value(),
+                                "Simulated POS QR checkout created",
+                                response)));
+    }
+
     @PostMapping("/khqrpay/webhook")
     public Mono<ResponseEntity<?>> khqrPayWebhook(@RequestBody JsonNode request) {
         return forward(paymentClient.post()
                 .uri("/khqrpay/webhook")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request));
+    }
+
+    @PostMapping("/{id}/simulate-callback")
+    @PreAuthorize("hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> simulateCallback(@PathVariable Long id) {
+        return forward(paymentClient.post().uri("/{id}/simulate-callback", id));
     }
 
     @GetMapping("/{id}")
