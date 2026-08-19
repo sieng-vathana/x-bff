@@ -40,7 +40,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: [self-hosted, linux, x64, x-platform-deploy]
+    runs-on: [self-hosted, linux, x64, x-platform-deploy-new]
     steps:
       - name: Roll out x-bff
         run: |
