@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 
@@ -54,7 +55,8 @@ public class BusinessController {
                                 request.defaultTaxId(),
                                 request.pricesIncludeTax(),
                                 request.timeZone(),
-                                request.fiscalYearStartMonth()))
+                                request.fiscalYearStartMonth(),
+                                request.usdToKhrExchangeRate()))
                         .retrieve()
                         .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
                         .map(ApiResponse::getData)
@@ -130,7 +132,10 @@ public class BusinessController {
     }
 
     private record UpdateBusinessRequest(
-            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 160) String name) {
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 160) String name,
+            @jakarta.validation.constraints.Pattern(regexp = "[A-Za-z]{3}") String defaultCurrencyCode,
+            @jakarta.validation.constraints.Positive BigDecimal usdToKhrExchangeRate,
+            Boolean pricesIncludeTax) {
     }
 
     private record CreateBusinessCommand(
@@ -143,6 +148,7 @@ public class BusinessController {
             Long defaultTaxId,
             Boolean pricesIncludeTax,
             String timeZone,
-            Integer fiscalYearStartMonth) {
+            Integer fiscalYearStartMonth,
+            BigDecimal usdToKhrExchangeRate) {
     }
 }

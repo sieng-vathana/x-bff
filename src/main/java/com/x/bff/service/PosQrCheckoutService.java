@@ -68,6 +68,10 @@ public class PosQrCheckoutService {
         if (request.taxRate() != null) {
             orderRequest.put("taxRate", request.taxRate());
         }
+        if (request.roundingIncrement() != null) {
+            orderRequest.put("roundingIncrement", request.roundingIncrement());
+        }
+        orderRequest.put("allowNegativeStock", Boolean.TRUE.equals(request.allowNegativeStock()));
         orderRequest.put("idempotencyKey", request.idempotencyKey());
         orderRequest.set("items", objectMapper.valueToTree(request.items()));
 

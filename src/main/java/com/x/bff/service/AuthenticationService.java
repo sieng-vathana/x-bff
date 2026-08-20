@@ -101,7 +101,7 @@ public class AuthenticationService {
                 .bodyValue(new CreateBusinessCommand(
                         userId, request.businessName(), request.businessCode(), request.defaultCurrencyCode(),
                         request.taxRegistrationNumber(), request.taxRegistrationLabel(), request.pricesIncludeTax(),
-                        request.timeZone(), request.fiscalYearStartMonth()))
+                        request.timeZone(), request.fiscalYearStartMonth(), request.usdToKhrExchangeRate()))
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
                 .map(ApiResponse::getData);
@@ -121,7 +121,7 @@ public class AuthenticationService {
     private record CreateBusinessCommand(
             Long ownerUserId, String name, String code, String defaultCurrencyCode,
             String taxRegistrationNumber, String taxRegistrationLabel, Boolean pricesIncludeTax,
-            String timeZone, Integer fiscalYearStartMonth) {
+            String timeZone, Integer fiscalYearStartMonth, java.math.BigDecimal usdToKhrExchangeRate) {
     }
 
     private record MarketplaceCustomerCommand(

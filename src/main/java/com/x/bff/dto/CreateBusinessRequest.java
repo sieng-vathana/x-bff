@@ -8,6 +8,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 
+import java.math.BigDecimal;
+
 public record CreateBusinessRequest(
         @NotBlank(message = "Business name is required")
         @Size(max = 160, message = "Business name must not exceed 160 characters") String name,
@@ -23,5 +25,14 @@ public record CreateBusinessRequest(
         @Size(max = 64, message = "Time zone must not exceed 64 characters") String timeZone,
         @NotNull(message = "Fiscal year start month is required")
         @Min(value = 1, message = "Fiscal year start month must be between 1 and 12")
-        @Max(value = 12, message = "Fiscal year start month must be between 1 and 12") Integer fiscalYearStartMonth) {
+        @Max(value = 12, message = "Fiscal year start month must be between 1 and 12") Integer fiscalYearStartMonth,
+        @Positive(message = "USD to KHR exchange rate must be positive") BigDecimal usdToKhrExchangeRate) {
+
+    public CreateBusinessRequest(
+            String name, String code, String defaultCurrencyCode, String taxRegistrationNumber,
+            String taxRegistrationLabel, Long defaultTaxId, Boolean pricesIncludeTax, String timeZone,
+            Integer fiscalYearStartMonth) {
+        this(name, code, defaultCurrencyCode, taxRegistrationNumber, taxRegistrationLabel, defaultTaxId,
+                pricesIncludeTax, timeZone, fiscalYearStartMonth, null);
+    }
 }

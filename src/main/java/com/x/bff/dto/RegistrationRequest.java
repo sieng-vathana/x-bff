@@ -30,5 +30,7 @@ public record RegistrationRequest(
         @NotBlank @Size(max = 100) String storeCity,
         @NotBlank @Pattern(regexp = "[A-Za-z]{2}") String storeCountryCode,
         BigDecimal storeLatitude,
-        BigDecimal storeLongitude) {
+        BigDecimal storeLongitude,
+        @jakarta.validation.constraints.Positive(message = "USD to KHR exchange rate must be positive")
+        BigDecimal usdToKhrExchangeRate) {
 }

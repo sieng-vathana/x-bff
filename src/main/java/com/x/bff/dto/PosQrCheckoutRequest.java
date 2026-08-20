@@ -22,5 +22,15 @@ public record PosQrCheckoutRequest(
         @NotBlank @Size(max = 160) String idempotencyKey,
         @NotBlank @Size(max = 160) String paymentIdempotencyKey,
         @Size(max = 500) String paymentNote,
-        @NotEmpty List<@Valid PosOrderItemRequest> items) {
+        @NotEmpty List<@Valid PosOrderItemRequest> items,
+        @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(100) Integer roundingIncrement,
+        Boolean allowNegativeStock) {
+
+    public PosQrCheckoutRequest(
+            Long businessId, Long storeId, Long customerId, Long cashierId, String currencyCode,
+            BigDecimal taxRate, String idempotencyKey, String paymentIdempotencyKey, String paymentNote,
+            List<PosOrderItemRequest> items) {
+        this(businessId, storeId, customerId, cashierId, currencyCode, taxRate, idempotencyKey,
+                paymentIdempotencyKey, paymentNote, items, null, false);
+    }
 }
