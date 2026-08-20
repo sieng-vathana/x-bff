@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -86,6 +87,33 @@ public class PaymentController {
     @PreAuthorize("hasAuthority('x-payment:create')")
     public Mono<ResponseEntity<?>> simulateCallback(@PathVariable Long id) {
         return forward(paymentClient.post().uri("/{id}/simulate-callback", id));
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> listForOrder(@RequestParam Long orderId) {
+        return forward(paymentClient.get().uri(uri -> uri.queryParam("orderId", orderId).build()));
+    }
+
+    @GetMapping("/reports/breakdown")
+    @PreAuthorize("hasAuthority('x-report:read')")
+    public Mono<ResponseEntity<?>> breakdown(
+            @RequestParam Long storeId, @RequestParam String from, @RequestParam String to) {
+        return forward(paymentClient.get()
+                .uri(uri -> uri.path("/reports/breakdown")
+                        .queryParam("storeId", storeId)
+                        .queryParam("from", from)
+                        .queryParam("to", to)
+                        .build()));
+    }
+
+    @PostMapping("/{id}/refund")
+    @PreAuthorize("hasAuthority('x-payment:refund')")
+    public Mono<ResponseEntity<?>> refund(@PathVariable Long id, @RequestBody JsonNode request) {
+        return forward(paymentClient.post()
+                .uri("/{id}/refund", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
     }
 
     @GetMapping("/{id}")

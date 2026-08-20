@@ -11,6 +11,8 @@ services:
     base-url: http://127.0.0.1:8086
   store:
     base-url: http://127.0.0.1:8087
+  customer:
+    base-url: http://127.0.0.1:8091
   product:
     base-url: http://127.0.0.1:8082
   inventory:

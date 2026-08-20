@@ -12,6 +12,8 @@ services:
     base-url: ${BUSINESS_SERVICE_URL:http://169.58.46.185:8086}
   store:
     base-url: ${STORE_SERVICE_URL:http://169.58.46.185:8087}
+  customer:
+    base-url: ${SERVICES_CUSTOMER_BASE_URL:http://169.58.46.185:8091}
   product:
     base-url: ${PRODUCT_SERVICE_URL:http://169.58.46.185:8082}
   inventory:

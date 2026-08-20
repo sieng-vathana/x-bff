@@ -75,6 +75,49 @@ class OrderControllerTest {
         assertThat(paymentExchange.request()).isNull();
     }
 
+    @Test
+    void salesSummaryForwardsReportParameters() {
+        CapturedExchange orderExchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":{"orderCount":2}}
+                """);
+        OrderController controller = controller(orderExchange, new CapturedExchange(HttpStatus.OK, ""));
+
+        var response = controller.salesSummary(4L, "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(orderExchange.request().url().getPath()).isEqualTo("/api/v1/orders/reports/sales-summary");
+        assertThat(orderExchange.request().url().getQuery())
+                .contains("storeId=4", "from=2026-08-15T00:00:00", "to=2026-08-22T00:00:00");
+    }
+
+    @Test
+    void topProductsForwardsReportParametersAndLimit() {
+        CapturedExchange orderExchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":[]}
+                """);
+        OrderController controller = controller(orderExchange, new CapturedExchange(HttpStatus.OK, ""));
+
+        controller.topProducts(4L, "2026-08-15T00:00:00", "2026-08-22T00:00:00", 5).block();
+
+        assertThat(orderExchange.request().url().getPath()).isEqualTo("/api/v1/orders/reports/top-products");
+        assertThat(orderExchange.request().url().getQuery())
+                .contains("storeId=4", "limit=5", "from=2026-08-15T00:00:00", "to=2026-08-22T00:00:00");
+    }
+
+    @Test
+    void getOrderForwardsOrderId() {
+        CapturedExchange orderExchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":{"id":42}}
+                """);
+        OrderController controller = controller(orderExchange, new CapturedExchange(HttpStatus.OK, ""));
+
+        controller.get(42L).block();
+
+        assertThat(orderExchange.request().method()).isEqualTo(HttpMethod.GET);
+        assertThat(orderExchange.request().url().getPath()).isEqualTo("/api/v1/orders/42");
+    }
+
     private OrderController controller(CapturedExchange orderExchange, CapturedExchange paymentExchange) {
         WebClient orderClient = WebClient.builder()
                 .baseUrl("http://x-order-service:8080/api/v1/orders")

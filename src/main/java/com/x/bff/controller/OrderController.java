@@ -61,6 +61,32 @@ public class OrderController {
                 .bodyValue(request));
     }
 
+    @GetMapping("/reports/sales-summary")
+    @PreAuthorize("hasAuthority('x-report:read')")
+    public Mono<ResponseEntity<?>> salesSummary(
+            @RequestParam Long storeId, @RequestParam String from, @RequestParam String to) {
+        return forward(orderClient.get()
+                .uri(uri -> uri.path("/reports/sales-summary")
+                        .queryParam("storeId", storeId)
+                        .queryParam("from", from)
+                        .queryParam("to", to)
+                        .build()));
+    }
+
+    @GetMapping("/reports/top-products")
+    @PreAuthorize("hasAuthority('x-report:read')")
+    public Mono<ResponseEntity<?>> topProducts(
+            @RequestParam Long storeId, @RequestParam String from, @RequestParam String to,
+            @RequestParam(defaultValue = "10") int limit) {
+        return forward(orderClient.get()
+                .uri(uri -> uri.path("/reports/top-products")
+                        .queryParam("storeId", storeId)
+                        .queryParam("from", from)
+                        .queryParam("to", to)
+                        .queryParam("limit", limit)
+                        .build()));
+    }
+
     @GetMapping("/holds")
     @PreAuthorize("hasAuthority('x-order:read')")
     public Mono<ResponseEntity<?>> getHeldOrders(
@@ -73,6 +99,12 @@ public class OrderController {
                         .queryParam("page", page)
                         .queryParam("size", size)
                         .build()));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('x-order:read')")
+    public Mono<ResponseEntity<?>> get(@PathVariable Long id) {
+        return forward(orderClient.get().uri("/{id}", id));
     }
 
     @PostMapping("/holds")
@@ -99,6 +131,12 @@ public class OrderController {
     @PreAuthorize("hasAuthority('x-order:update') or hasAuthority('x-order:create')")
     public Mono<ResponseEntity<?>> complete(@PathVariable Long id) {
         return forward(orderClient.post().uri("/{id}/complete", id));
+    }
+
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('x-order:cancel')")
+    public Mono<ResponseEntity<?>> cancel(@PathVariable Long id) {
+        return forward(orderClient.post().uri("/{id}/cancel", id));
     }
 
     @GetMapping("/echo/{text}")

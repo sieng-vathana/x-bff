@@ -118,6 +118,47 @@ class PaymentControllerTest {
         assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments/9/simulate-callback");
     }
 
+    @Test
+    void listForOrderForwardsOrderId() {
+        CapturedExchange exchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":[]}
+                """);
+        PaymentController controller = controller(exchange);
+
+        controller.listForOrder(42L).block();
+
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.GET);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments");
+        assertThat(exchange.request().url().getQuery()).isEqualTo("orderId=42");
+    }
+
+    @Test
+    void breakdownForwardsReportParameters() {
+        CapturedExchange exchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":[]}
+                """);
+        PaymentController controller = controller(exchange);
+
+        controller.breakdown(4L, "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
+
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments/reports/breakdown");
+        assertThat(exchange.request().url().getQuery())
+                .contains("storeId=4", "from=2026-08-15T00:00:00", "to=2026-08-22T00:00:00");
+    }
+
+    @Test
+    void refundForwardsPaymentId() throws Exception {
+        CapturedExchange exchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":{"id":9,"status":"REFUNDED"}}
+                """);
+        PaymentController controller = controller(exchange);
+
+        controller.refund(9L, OBJECT_MAPPER.readTree("{\"amount\":1,\"reason\":\"test\"}")).block();
+
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.POST);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments/9/refund");
+    }
+
     private PaymentController controller(CapturedExchange exchange) {
         return controller(exchange, mock(PosQrCheckoutService.class));
     }
