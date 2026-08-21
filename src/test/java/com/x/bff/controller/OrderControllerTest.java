@@ -106,6 +106,20 @@ class OrderControllerTest {
     }
 
     @Test
+    void salesTrendForwardsReportParameters() {
+        CapturedExchange orderExchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":[]}
+                """);
+        OrderController controller = controller(orderExchange, new CapturedExchange(HttpStatus.OK, ""));
+
+        controller.salesTrend(4L, "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
+
+        assertThat(orderExchange.request().url().getPath()).isEqualTo("/api/v1/orders/reports/sales-trend");
+        assertThat(orderExchange.request().url().getQuery())
+                .contains("storeId=4", "from=2026-08-15T00:00:00", "to=2026-08-22T00:00:00");
+    }
+
+    @Test
     void getOrderForwardsOrderId() {
         CapturedExchange orderExchange = new CapturedExchange(HttpStatus.OK, """
                 {"status":1,"code":200,"data":{"id":42}}

@@ -87,6 +87,18 @@ public class OrderController {
                         .build()));
     }
 
+    @GetMapping("/reports/sales-trend")
+    @PreAuthorize("hasAuthority('x-report:read')")
+    public Mono<ResponseEntity<?>> salesTrend(
+            @RequestParam Long storeId, @RequestParam String from, @RequestParam String to) {
+        return forward(orderClient.get()
+                .uri(uri -> uri.path("/reports/sales-trend")
+                        .queryParam("storeId", storeId)
+                        .queryParam("from", from)
+                        .queryParam("to", to)
+                        .build()));
+    }
+
     @GetMapping("/holds")
     @PreAuthorize("hasAuthority('x-order:read')")
     public Mono<ResponseEntity<?>> getHeldOrders(
