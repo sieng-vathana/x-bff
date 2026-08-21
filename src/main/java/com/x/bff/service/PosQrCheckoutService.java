@@ -99,6 +99,7 @@ public class PosQrCheckoutService {
         paymentRequest.put("orderId", orderId);
         paymentRequest.put("businessId", request.businessId());
         paymentRequest.put("storeId", request.storeId());
+        paymentRequest.put("cashierId", request.cashierId());
         paymentRequest.set("amount", grandTotal);
         paymentRequest.put("currencyCode", currencyCode);
         paymentRequest.put("idempotencyKey", request.paymentIdempotencyKey());

@@ -147,6 +147,43 @@ class PaymentControllerTest {
     }
 
     @Test
+    void cashSessionEndpointsForwardToPaymentService() throws Exception {
+        CapturedExchange exchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":{}}
+                """);
+        PaymentController controller = controller(exchange);
+
+        controller.currentCashSession(4L, 7L, "USD").block();
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.GET);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments/cash-sessions/current");
+        assertThat(exchange.request().url().getQuery()).contains("storeId=4", "cashierId=7", "currencyCode=USD");
+
+        controller.openCashSession(OBJECT_MAPPER.readTree("{\"storeId\":4,\"cashierId\":7}")).block();
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.POST);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments/cash-sessions/open");
+
+        controller.addCashMovement(11L, OBJECT_MAPPER.readTree("{\"amount\":2}")).block();
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments/cash-sessions/11/movements");
+
+        controller.closeCashSession(11L, OBJECT_MAPPER.readTree("{\"countedCash\":2}")).block();
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments/cash-sessions/11/close");
+    }
+
+    @Test
+    void cashSessionRoutesUsePaymentPermissions() throws Exception {
+        Method current = PaymentController.class.getMethod("currentCashSession", Long.class, Long.class, String.class);
+        Method open = PaymentController.class.getMethod("openCashSession", com.fasterxml.jackson.databind.JsonNode.class);
+        Method movement = PaymentController.class.getMethod("addCashMovement", Long.class, com.fasterxml.jackson.databind.JsonNode.class);
+        Method close = PaymentController.class.getMethod("closeCashSession", Long.class, com.fasterxml.jackson.databind.JsonNode.class);
+
+        assertThat(current.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')");
+        assertThat(open.getAnnotation(PreAuthorize.class).value()).isEqualTo("hasAuthority('x-payment:create')");
+        assertThat(movement.getAnnotation(PreAuthorize.class).value()).isEqualTo("hasAuthority('x-payment:create')");
+        assertThat(close.getAnnotation(PreAuthorize.class).value()).isEqualTo("hasAuthority('x-payment:create')");
+    }
+
+    @Test
     void refundForwardsPaymentId() throws Exception {
         CapturedExchange exchange = new CapturedExchange(HttpStatus.OK, """
                 {"status":1,"code":200,"data":{"id":9,"status":"REFUNDED"}}

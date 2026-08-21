@@ -116,6 +116,61 @@ public class PaymentController {
                 .bodyValue(request));
     }
 
+    @GetMapping("/cash-sessions/current")
+    @PreAuthorize("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> currentCashSession(
+            @RequestParam Long storeId, @RequestParam Long cashierId, @RequestParam String currencyCode) {
+        return forward(paymentClient.get().uri(uri -> uri.path("/cash-sessions/current")
+                .queryParam("storeId", storeId)
+                .queryParam("cashierId", cashierId)
+                .queryParam("currencyCode", currencyCode)
+                .build()));
+    }
+
+    @GetMapping("/cash-sessions/history")
+    @PreAuthorize("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> cashSessionHistory(
+            @RequestParam Long storeId, @RequestParam Long cashierId, @RequestParam String currencyCode) {
+        return forward(paymentClient.get().uri(uri -> uri.path("/cash-sessions/history")
+                .queryParam("storeId", storeId)
+                .queryParam("cashierId", cashierId)
+                .queryParam("currencyCode", currencyCode)
+                .build()));
+    }
+
+    @PostMapping("/cash-sessions/open")
+    @PreAuthorize("hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> openCashSession(@RequestBody JsonNode request) {
+        return forward(paymentClient.post()
+                .uri("/cash-sessions/open")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @GetMapping("/cash-sessions/{id}")
+    @PreAuthorize("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> getCashSession(@PathVariable Long id) {
+        return forward(paymentClient.get().uri("/cash-sessions/{id}", id));
+    }
+
+    @PostMapping("/cash-sessions/{id}/movements")
+    @PreAuthorize("hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> addCashMovement(@PathVariable Long id, @RequestBody JsonNode request) {
+        return forward(paymentClient.post()
+                .uri("/cash-sessions/{id}/movements", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @PostMapping("/cash-sessions/{id}/close")
+    @PreAuthorize("hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> closeCashSession(@PathVariable Long id, @RequestBody JsonNode request) {
+        return forward(paymentClient.post()
+                .uri("/cash-sessions/{id}/close", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')")
     public Mono<ResponseEntity<?>> get(@PathVariable Long id) {
