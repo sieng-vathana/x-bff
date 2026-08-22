@@ -90,7 +90,7 @@ public class PaymentController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')")
+    @PreAuthorize("hasAuthority('x-payment:read') or hasAuthority('x-payment:create') or hasAuthority('x-order:refund')")
     public Mono<ResponseEntity<?>> listForOrder(@RequestParam Long orderId) {
         return forward(paymentClient.get().uri(uri -> uri.queryParam("orderId", orderId).build()));
     }
@@ -108,7 +108,7 @@ public class PaymentController {
     }
 
     @PostMapping("/{id}/refund")
-    @PreAuthorize("hasAuthority('x-payment:refund')")
+    @PreAuthorize("hasAuthority('x-payment:refund') or hasAuthority('x-order:refund')")
     public Mono<ResponseEntity<?>> refund(@PathVariable Long id, @RequestBody JsonNode request) {
         return forward(paymentClient.post()
                 .uri("/{id}/refund", id)

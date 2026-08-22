@@ -61,15 +61,21 @@ class PaymentControllerTest {
     }
 
     @Test
-    void paymentTestRoutesRequireCreatePermission() throws Exception {
+    void paymentTestRoutesRequireExpectedPermission() throws Exception {
         Method createQr = PaymentController.class.getMethod("createQr", com.fasterxml.jackson.databind.JsonNode.class);
         Method get = PaymentController.class.getMethod("get", Long.class);
+        Method list = PaymentController.class.getMethod("listForOrder", Long.class);
+        Method refund = PaymentController.class.getMethod("refund", Long.class, com.fasterxml.jackson.databind.JsonNode.class);
         Method createPosQr = PaymentController.class.getMethod("createPosQr", PosQrCheckoutRequest.class);
 
         assertThat(createQr.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('x-payment:create')");
         assertThat(get.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('x-payment:read') or hasAuthority('x-payment:create')");
+        assertThat(list.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('x-payment:read') or hasAuthority('x-payment:create') or hasAuthority('x-order:refund')");
+        assertThat(refund.getAnnotation(PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('x-payment:refund') or hasAuthority('x-order:refund')");
         assertThat(createPosQr.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('x-order:create') and hasAuthority('x-payment:create')");
     }
