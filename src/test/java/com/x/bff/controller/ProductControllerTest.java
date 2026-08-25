@@ -89,6 +89,40 @@ class ProductControllerTest {
     }
 
     @Test
+    void optionCrudRoutesForwardToTheProductService() throws Exception {
+        CapturedExchange exchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":{}}
+                """);
+        ProductController controller = controller(exchange);
+        var request = OBJECT_MAPPER.readTree("{\"businessId\":1,\"attributeName\":\"Size\",\"values\":[{\"value\":\"Small\"}]}" );
+
+        controller.getAttribute(7L).block();
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.GET);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/products/attributes/7");
+
+        controller.createAttribute(request).block();
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.POST);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/products/attributes");
+        assertThat(exchange.request().headers().getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
+
+        controller.updateAttribute(7L, request).block();
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.PUT);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/products/attributes/7");
+
+        controller.addAttributeValue(7L, OBJECT_MAPPER.readTree("{\"value\":\"Medium\"}" )).block();
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.POST);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/products/attributes/7/values");
+
+        controller.deleteAttributeValue(11L).block();
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.DELETE);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/products/attributes/values/11");
+
+        controller.deleteAttribute(7L).block();
+        assertThat(exchange.request().method()).isEqualTo(HttpMethod.DELETE);
+        assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/products/attributes/7");
+    }
+
+    @Test
     void referenceRoutesRequireTheirDedicatedPermissions() throws Exception {
         Method unitMethod = ProductController.class.getMethod(
                 "getUnits", Long.class, String.class, int.class, int.class);

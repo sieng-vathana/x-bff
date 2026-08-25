@@ -355,10 +355,56 @@ public class ProductController {
                 .queryParam("businessId", businessId).build()));
     }
 
+    @GetMapping("/attributes/{id}")
+    @PreAuthorize("hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> getAttribute(@PathVariable Long id) {
+        return forward(productClient.get().uri("/attributes/" + id));
+    }
+
+    @PostMapping("/attributes")
+    @PreAuthorize("hasAuthority('x-product:create') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> createAttribute(@RequestBody JsonNode request) {
+        return forward(productClient.post().uri("/attributes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @PutMapping("/attributes/{id}")
+    @PreAuthorize("hasAuthority('x-product:update') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> updateAttribute(
+            @PathVariable Long id,
+            @RequestBody JsonNode request) {
+        return forward(productClient.put().uri("/attributes/" + id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
     @GetMapping("/attributes/{id}/values")
     @PreAuthorize("hasAuthority('x-product:read')")
     public Mono<ResponseEntity<?>> getAttributeValues(@PathVariable Long id) {
         return forward(productClient.get().uri("/attributes/" + id + "/values"));
+    }
+
+    @PostMapping("/attributes/{id}/values")
+    @PreAuthorize("hasAuthority('x-product:create') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> addAttributeValue(
+            @PathVariable Long id,
+            @RequestBody JsonNode request) {
+        return forward(productClient.post().uri("/attributes/" + id + "/values")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @DeleteMapping("/attributes/values/{valueId}")
+    @PreAuthorize("hasAuthority('x-product:delete') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> deleteAttributeValue(@PathVariable Long valueId) {
+        return forward(productClient.delete().uri("/attributes/values/" + valueId));
+    }
+
+    @DeleteMapping("/attributes/{id}")
+    @PreAuthorize("hasAuthority('x-product:delete') or hasAuthority('x-product:read')")
+    public Mono<ResponseEntity<?>> deleteAttribute(@PathVariable Long id) {
+        return forward(productClient.delete().uri("/attributes/" + id));
     }
 
     private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
