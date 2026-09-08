@@ -35,3 +35,4 @@ x:
         /api/v1/stock: "x-api-gateway → x-bff → x-inventory-service"
         /api/v1/home: "x-api-gateway → x-bff → x-inventory-service"
         /api/v1/payments: "x-api-gateway → x-bff → x-payment-service"
+        /api/v1/deliveries: "x-api-gateway → x-bff → x-delivery-service"

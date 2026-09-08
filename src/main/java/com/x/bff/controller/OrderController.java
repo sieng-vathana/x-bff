@@ -42,15 +42,29 @@ public class OrderController {
     @PreAuthorize("hasAuthority('x-order:read')")
     public Mono<ResponseEntity<?>> getOrders(
             @RequestParam Long storeId,
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String fulfillmentType,
+            @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return orderClient.get()
-                .uri(uri -> uri
-                        .queryParam("storeId", storeId)
-                        .queryParam("page", page)
-                        .queryParam("size", size)
-                        .build())
+                .uri(uri -> {
+                    var builder = uri
+                            .queryParam("storeId", storeId)
+                            .queryParam("page", page)
+                            .queryParam("size", size);
+                    if (channel != null && !channel.isBlank()) builder.queryParam("channel", channel);
+                    if (status != null && !status.isBlank()) builder.queryParam("status", status);
+                    if (fulfillmentType != null && !fulfillmentType.isBlank()) builder.queryParam("fulfillmentType", fulfillmentType);
+                    if (search != null && !search.isBlank()) builder.queryParam("search", search);
+                    return builder.build();
+                })
                 .exchangeToMono(this::enrichRecentOrders);
+    }
+
+    public Mono<ResponseEntity<?>> getOrders(Long storeId, int page, int size) {
+        return getOrders(storeId, null, null, null, null, page, size);
     }
 
     @PostMapping("/pos")
@@ -59,6 +73,38 @@ public class OrderController {
         return forward(orderClient.post().uri("/pos")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request));
+    }
+
+    @PostMapping("/online")
+    @PreAuthorize("hasAuthority('x-order:create')")
+    public Mono<ResponseEntity<?>> createOnline(@RequestBody JsonNode request) {
+        return forward(orderClient.post().uri("/online")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
+    @PostMapping("/{id}/confirm")
+    @PreAuthorize("hasAuthority('x-order:update') or hasAuthority('x-order:create')")
+    public Mono<ResponseEntity<?>> confirm(@PathVariable Long id) {
+        return forward(orderClient.post().uri("/{id}/confirm", id));
+    }
+
+    @PostMapping("/{id}/pack")
+    @PreAuthorize("hasAuthority('x-order:update') or hasAuthority('x-order:create')")
+    public Mono<ResponseEntity<?>> pack(@PathVariable Long id) {
+        return forward(orderClient.post().uri("/{id}/pack", id));
+    }
+
+    @PostMapping("/{id}/ship")
+    @PreAuthorize("hasAuthority('x-order:update') or hasAuthority('x-order:create')")
+    public Mono<ResponseEntity<?>> ship(@PathVariable Long id) {
+        return forward(orderClient.post().uri("/{id}/ship", id));
+    }
+
+    @PostMapping("/{id}/deliver")
+    @PreAuthorize("hasAuthority('x-order:update') or hasAuthority('x-order:create')")
+    public Mono<ResponseEntity<?>> deliver(@PathVariable Long id) {
+        return forward(orderClient.post().uri("/{id}/deliver", id));
     }
 
     @GetMapping("/reports/sales-summary")

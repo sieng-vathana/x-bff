@@ -24,3 +24,5 @@ services:
     base-url: ${PAYMENT_SERVICE_URL:http://169.58.46.185:8084}
   storage:
     base-url: ${STORAGE_SERVICE_URL:http://169.58.46.185:8088}
+  delivery:
+    base-url: ${DELIVERY_SERVICE_URL:http://169.58.46.185:8090}
