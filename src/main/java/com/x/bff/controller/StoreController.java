@@ -27,7 +27,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.x.bff.dto.ApplyMarketplaceRequest;
+import com.x.bff.dto.ReviewMarketplaceRequest;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -163,7 +166,7 @@ public class StoreController {
             return Mono.just(request);
         }
         return storeImageUrlResolver.resolveRequests(request.images()).map(images -> new CreateStoreRequest(
-                request.businessId(), request.name(), request.code(), request.addressLine1(), request.addressLine2(),
+                request.businessId(), request.name(), request.code(), request.storeType(), request.addressLine1(), request.addressLine2(),
                 request.landmark(), request.city(), request.stateProvince(), request.countryCode(), request.postalCode(),
                 request.phone(), request.alternatePhone(), request.email(), request.website(), request.latitude(),
                 request.longitude(), images));
@@ -174,10 +177,73 @@ public class StoreController {
             return Mono.just(request);
         }
         return storeImageUrlResolver.resolveRequests(request.images()).map(images -> new UpdateStoreRequest(
-                request.name(), request.code(), request.addressLine1(), request.addressLine2(), request.landmark(),
+                request.name(), request.code(), request.storeType(), request.addressLine1(), request.addressLine2(), request.landmark(),
                 request.city(), request.stateProvince(), request.countryCode(), request.postalCode(), request.phone(),
                 request.alternatePhone(), request.email(), request.website(), request.latitude(), request.longitude(),
                 images, request.status()));
+    }
+
+    @PostMapping("/{id}/marketplace/apply")
+    @PreAuthorize("hasAuthority('x-store:update')")
+    public Mono<ResponseEntity<ApiResponse<StoreResponse>>> applyMarketplace(
+            @PathVariable Long id,
+            @RequestBody(required = false) ApplyMarketplaceRequest request,
+            Authentication authentication) {
+        return storeClient.get()
+                .uri("/{id}", id)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
+                .map(ApiResponse::getData)
+                .flatMap(store -> requireBusinessAccess(store.businessId(), authentication)
+                        .then(storeClient.post()
+                                .uri("/{id}/marketplace/apply", id)
+                                .bodyValue(request != null ? request : new ApplyMarketplaceRequest(null))
+                                .retrieve()
+                                .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
+                                .map(ApiResponse::getData)
+                                .flatMap(storeImageUrlResolver::resolveResponse)))
+                .map(store -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Marketplace application submitted", store)));
+    }
+
+    @PostMapping("/{id}/marketplace/approve")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:manage')")
+    public Mono<ResponseEntity<ApiResponse<StoreResponse>>> approveMarketplace(@PathVariable Long id) {
+        return storeClient.post()
+                .uri("/{id}/marketplace/approve", id)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
+                .map(ApiResponse::getData)
+                .flatMap(storeImageUrlResolver::resolveResponse)
+                .map(store -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Marketplace store approved", store)));
+    }
+
+    @PostMapping("/{id}/marketplace/reject")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:manage')")
+    public Mono<ResponseEntity<ApiResponse<StoreResponse>>> rejectMarketplace(
+            @PathVariable Long id,
+            @RequestBody(required = false) ReviewMarketplaceRequest request) {
+        return storeClient.post()
+                .uri("/{id}/marketplace/reject", id)
+                .bodyValue(request != null ? request : new ReviewMarketplaceRequest(null))
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
+                .map(ApiResponse::getData)
+                .flatMap(storeImageUrlResolver::resolveResponse)
+                .map(store -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Marketplace store rejected", store)));
+    }
+
+    @GetMapping("/marketplace/pending")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:manage')")
+    public Mono<ResponseEntity<ApiResponse<List<StoreResponse>>>> listPendingMarketplace() {
+        return storeClient.get()
+                .uri("/marketplace/pending")
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<List<StoreResponse>>>() {})
+                .map(ApiResponse::getData)
+                .flatMap(stores -> Flux.fromIterable(stores)
+                        .concatMap(storeImageUrlResolver::resolveResponse)
+                        .collectList())
+                .map(stores -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), stores)));
     }
 
 }

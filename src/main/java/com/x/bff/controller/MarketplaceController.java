@@ -14,6 +14,7 @@ import com.x.bff.service.StoreImageUrlResolver;
 import com.x.bff.service.UserServiceClient;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,7 @@ import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -104,6 +106,21 @@ public class MarketplaceController {
                                 .toList())
                         .map(stores -> toResponse(tuple.getT1(), tuple.getT2(), tuple.getT3(), tuple.getT4(), stores)))
                 .map(home -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), home)));
+    }
+
+    @GetMapping("/stores/{storeId}/categories")
+    public Mono<ResponseEntity<ApiResponse<PageResponse<MarketplaceCategoryResponse>>>> getStoreCategories(
+            @PathVariable @Positive Long storeId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        return productClient.get()
+                .uri(uri -> uri.path("/stores/{storeId}/categories")
+                        .queryParam("page", page)
+                        .queryParam("size", size)
+                        .build(storeId))
+                .retrieve()
+                .bodyToMono(CATEGORIES_TYPE)
+                .map(ResponseEntity::ok);
     }
 
     private Mono<UserContext> currentUser() {
