@@ -233,13 +233,20 @@ public class StoreController {
     }
 
     @GetMapping("/marketplace/pending")
-    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:manage')")
-    public Mono<ResponseEntity<ApiResponse<List<StoreResponse>>>> listPendingMarketplace() {
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:manage') or hasAuthority('x-store:read')")
+    public Mono<ResponseEntity<ApiResponse<List<StoreResponse>>>> listPendingMarketplace(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
         return storeClient.get()
-                .uri("/marketplace/pending")
+                .uri(uriBuilder -> uriBuilder
+                        .path("/marketplace/pending")
+                        .queryParam("page", page)
+                        .queryParam("size", size)
+                        .build())
                 .retrieve()
-                .bodyToMono(new ParameterizedTypeReference<ApiResponse<List<StoreResponse>>>() {})
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<PageResponse<StoreResponse>>>() {})
                 .map(ApiResponse::getData)
+                .map(PageResponse::content)
                 .flatMap(stores -> Flux.fromIterable(stores)
                         .concatMap(storeImageUrlResolver::resolveResponse)
                         .collectList())
