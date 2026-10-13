@@ -42,6 +42,15 @@ jobs:
     needs: build
     runs-on: [self-hosted, linux, x64, x-platform-deploy-new]
     steps:
+      - name: Create short lived GHCR pull secret
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PULL_SECRET=ghcr-pull-x-bff
+          AUTH=$(printf '%s:%s' "$GITHUB_ACTOR" "$GHCR_TOKEN" | base64 -w0)
+          DOCKER_CONFIG=$(printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$AUTH" | base64 -w0)
+          printf '%s' "$DOCKER_CONFIG" | base64 -d | sudo k3s kubectl -n x-platform create secret generic "$PULL_SECRET" --type=kubernetes.io/dockerconfigjson --from-file=.dockerconfigjson=/dev/stdin --dry-run=client -o yaml | sudo k3s kubectl apply -f -
+
       - name: Roll out x-bff
         run: |
           sudo k3s kubectl -n x-platform create deployment x-bff --image=ghcr.io/sieng-vathana/x-bff:${{ github.sha }} --dry-run=client -o yaml | sudo k3s kubectl apply -f -
@@ -50,7 +59,14 @@ jobs:
           sudo k3s kubectl -n x-platform set env deployment/x-bff SERVER_PORT=8080 SPRING_PROFILES_ACTIVE=production USER_SERVICE_URL=http://x-user-service.x-platform.svc.cluster.local:8080/internal/users SERVICES_CUSTOMER_BASE_URL=http://x-customer-service.x-platform.svc.cluster.local:8080 BUSINESS_SERVICE_URL=http://x-business-service.x-platform.svc.cluster.local:8080 STORE_SERVICE_URL=http://x-store-service.x-platform.svc.cluster.local:8080 PRODUCT_SERVICE_URL=http://x-product-service.x-platform.svc.cluster.local:8080 INVENTORY_SERVICE_URL=http://x-inventory-service.x-platform.svc.cluster.local:8080 ORDER_SERVICE_URL=http://x-order-service.x-platform.svc.cluster.local:8080 PAYMENT_SERVICE_URL=http://x-payment-service.x-platform.svc.cluster.local:8080 STORAGE_SERVICE_URL=http://x-storage-service.x-platform.svc.cluster.local:8080 SPRING_DATASOURCE_URL=jdbc:mysql://mysql.x-platform.svc.cluster.local:3306/x_prod SPRING_JPA_HIBERNATE_DDL_AUTO=update --from=secret/x-app-database
           sudo k3s kubectl -n x-platform scale deployment/x-bff --replicas=2
           sudo k3s kubectl -n x-platform patch deployment x-bff --type='strategic' -p='{"spec":{"strategy":{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":0,"maxSurge":1}},"template":{"spec":{"containers":[{"name":"x-bff","readinessProbe":{"tcpSocket":{"port":8080},"initialDelaySeconds":5,"periodSeconds":5,"timeoutSeconds":2,"failureThreshold":6,"successThreshold":1},"startupProbe":{"tcpSocket":{"port":8080},"periodSeconds":5,"timeoutSeconds":2,"failureThreshold":24}}]}}}}'
+          sudo k3s kubectl -n x-platform patch deployment x-bff --type=strategic -p='{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ghcr-pull-x-bff"}]}}}}'
           sudo k3s kubectl -n x-platform rollout status deployment/x-bff --timeout=180s
+      - name: Remove temporary GHCR pull secret
+        if: success()
+        run: |
+          sudo k3s kubectl -n x-platform patch deployment x-bff --type=json -p='[{"op":"remove","path":"/spec/template/spec/imagePullSecrets"}]'
+          sudo k3s kubectl -n x-platform rollout status deployment/x-bff --timeout=180s
+          sudo k3s kubectl -n x-platform delete secret ghcr-pull-x-bff --ignore-not-found=true
 
   notify:
     if: always()
