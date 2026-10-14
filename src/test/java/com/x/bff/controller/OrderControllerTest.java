@@ -82,7 +82,7 @@ class OrderControllerTest {
                 """);
         OrderController controller = controller(orderExchange, new CapturedExchange(HttpStatus.OK, ""));
 
-        var response = controller.salesSummary(4L, "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
+        var response = controller.salesSummary(4L, "USD", "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
 
         assertThat(response).isNotNull();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -98,7 +98,7 @@ class OrderControllerTest {
                 """);
         OrderController controller = controller(orderExchange, new CapturedExchange(HttpStatus.OK, ""));
 
-        controller.topProducts(4L, "2026-08-15T00:00:00", "2026-08-22T00:00:00", 5).block();
+        controller.topProducts(4L, "USD", "2026-08-15T00:00:00", "2026-08-22T00:00:00", 5).block();
 
         assertThat(orderExchange.request().url().getPath()).isEqualTo("/api/v1/orders/reports/top-products");
         assertThat(orderExchange.request().url().getQuery())
@@ -112,7 +112,7 @@ class OrderControllerTest {
                 """);
         OrderController controller = controller(orderExchange, new CapturedExchange(HttpStatus.OK, ""));
 
-        controller.salesTrend(4L, "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
+        controller.salesTrend(4L, "USD", "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
 
         assertThat(orderExchange.request().url().getPath()).isEqualTo("/api/v1/orders/reports/sales-trend");
         assertThat(orderExchange.request().url().getQuery())

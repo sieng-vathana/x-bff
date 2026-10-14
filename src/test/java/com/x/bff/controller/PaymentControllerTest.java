@@ -145,7 +145,7 @@ class PaymentControllerTest {
                 """);
         PaymentController controller = controller(exchange);
 
-        controller.breakdown(4L, "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
+        controller.breakdown(4L, "USD", "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
 
         assertThat(exchange.request().url().getPath()).isEqualTo("/api/v1/payments/reports/breakdown");
         assertThat(exchange.request().url().getQuery())
