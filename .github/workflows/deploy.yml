@@ -3,6 +3,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   packages: write
@@ -42,7 +46,7 @@ jobs:
     needs: build
     runs-on: [self-hosted, linux, x64, x-platform-deploy-new]
     steps:
-      - name: Create short lived GHCR pull secret
+      - name: Refresh GHCR image-pull secret
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -61,13 +65,6 @@ jobs:
           sudo k3s kubectl -n x-platform patch deployment x-bff --type='strategic' -p='{"spec":{"strategy":{"type":"RollingUpdate","rollingUpdate":{"maxUnavailable":0,"maxSurge":1}},"template":{"spec":{"containers":[{"name":"x-bff","readinessProbe":{"tcpSocket":{"port":8080},"initialDelaySeconds":5,"periodSeconds":5,"timeoutSeconds":2,"failureThreshold":6,"successThreshold":1},"startupProbe":{"tcpSocket":{"port":8080},"periodSeconds":5,"timeoutSeconds":2,"failureThreshold":48}}]}}}}'
           sudo k3s kubectl -n x-platform patch deployment x-bff --type=strategic -p='{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ghcr-pull-x-bff"}]}}}}'
           sudo k3s kubectl -n x-platform rollout status deployment/x-bff --timeout=360s
-      - name: Remove temporary GHCR pull secret
-        if: success()
-        run: |
-          sudo k3s kubectl -n x-platform patch deployment x-bff --type=json -p='[{"op":"remove","path":"/spec/template/spec/imagePullSecrets"}]'
-          sudo k3s kubectl -n x-platform rollout status deployment/x-bff --timeout=360s
-          sudo k3s kubectl -n x-platform delete secret ghcr-pull-x-bff --ignore-not-found=true
-
   notify:
     if: always()
     needs: [build, deploy]
