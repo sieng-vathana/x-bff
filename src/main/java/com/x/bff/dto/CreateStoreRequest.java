@@ -33,7 +33,8 @@ public record CreateStoreRequest(
         @Size(max = 255, message = "Website must not exceed 255 characters") String website,
         BigDecimal latitude,
         BigDecimal longitude,
-        List<@jakarta.validation.Valid StoreImageRequest> images) {
+        List<@jakarta.validation.Valid StoreImageRequest> images,
+        @jakarta.validation.Valid StoreOpeningHours openingHours) {
 
     public CreateStoreRequest(Long businessId, String name, String code,
                               String addressLine1, String addressLine2, String landmark,
@@ -43,6 +44,6 @@ public record CreateStoreRequest(
                               BigDecimal longitude, List<StoreImageRequest> images) {
         this(businessId, name, code, "GENERAL_RETAIL", addressLine1, addressLine2,
              landmark, city, stateProvince, countryCode, postalCode, phone,
-             alternatePhone, email, website, latitude, longitude, images);
+             alternatePhone, email, website, latitude, longitude, images, null);
     }
 }

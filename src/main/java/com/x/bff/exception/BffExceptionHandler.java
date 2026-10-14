@@ -1,9 +1,12 @@
 package com.x.bff.exception;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sharedlib.response.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -18,6 +21,11 @@ import org.springframework.web.reactive.resource.NoResourceFoundException;
 public class BffExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(BffExceptionHandler.class);
+    private final ObjectMapper objectMapper;
+
+    public BffExceptionHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @ExceptionHandler(WebClientRequestException.class)
     public ResponseEntity<ApiResponse<Void>> handleServiceUnavailable(WebClientRequestException ex) {
@@ -32,19 +40,38 @@ public class BffExceptionHandler {
         String body = ex.getResponseBodyAsString();
         String path = ex.getRequest() != null ? String.valueOf(ex.getRequest().getURI()) : "unknown";
         log.warn(
-                "Downstream request failed status={} uri={} body={}",
+                "Downstream request failed status={} uri={}",
                 ex.getStatusCode().value(),
-                path,
-                body == null || body.isBlank() ? "<empty>" : body);
+                path);
 
-        // Surface a short hint for local debugging (status -1 means business error wrapper)
-        String hint = "Downstream request failed (" + ex.getStatusCode().value() + ") calling " + path;
-        if (body != null && !body.isBlank() && body.length() < 500) {
-            hint = hint + ": " + body;
+        HttpStatusCode downstreamStatus = ex.getStatusCode();
+        if (downstreamStatus.is4xxClientError()) {
+            return ResponseEntity.status(downstreamStatus)
+                    .body(ApiResponse.error(downstreamStatus.value(), downstreamMessage(body)));
         }
+
         return new ResponseEntity<>(
-                ApiResponse.error(ex.getStatusCode().value(), hint),
+                ApiResponse.error(
+                        HttpStatus.BAD_GATEWAY.value(),
+                        "A downstream service could not complete the request."),
                 HttpStatus.BAD_GATEWAY);
+    }
+
+    private String downstreamMessage(String body) {
+        if (body != null && !body.isBlank()) {
+            try {
+                JsonNode messageNode = objectMapper.readTree(body).path("message");
+                if (messageNode.isTextual()) {
+                    String message = messageNode.asText().trim();
+                    if (!message.isEmpty() && message.length() <= 200) {
+                        return message;
+                    }
+                }
+            } catch (Exception ignored) {
+                // Fall back to a safe message when the downstream response is not our API envelope.
+            }
+        }
+        return "The request was rejected by a downstream service.";
     }
 
     @ExceptionHandler(BadCredentialsException.class)

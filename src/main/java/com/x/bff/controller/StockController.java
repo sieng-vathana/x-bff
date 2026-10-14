@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -36,6 +37,8 @@ public class StockController {
             new ParameterizedTypeReference<>() {};
     private static final ParameterizedTypeReference<ApiResponse<PageResponse<StockMovementResponse>>>
             STOCK_MOVEMENTS_RESPONSE = new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<PageResponse<StockBalanceResponse>>>
+            LOW_STOCK_RESPONSE = new ParameterizedTypeReference<>() {};
 
     public StockController(ServiceClientFactory clientFactory) {
         this.inventoryClient = clientFactory.forService("inventory", "/api/v1/inventory");
@@ -85,6 +88,24 @@ public class StockController {
                     return builder.queryParam("page", page).queryParam("size", size).build();
                 })
                 .retrieve().bodyToMono(STOCK_MOVEMENTS_RESPONSE)
+                .map(ApiResponse::getData)
+                .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), data)));
+    }
+
+    @GetMapping("/reports/low-stock")
+    @PreAuthorize("hasAuthority('x-inventory:read')")
+    public Mono<ResponseEntity<ApiResponse<PageResponse<StockBalanceResponse>>>> lowStock(
+            @RequestParam @Positive Long storeId,
+            @RequestParam(defaultValue = "5") @PositiveOrZero long threshold,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return inventoryClient.get().uri(uri -> uri.path("/reports/low-stock")
+                        .queryParam("storeId", storeId)
+                        .queryParam("threshold", threshold)
+                        .queryParam("page", page)
+                        .queryParam("size", size)
+                        .build())
+                .retrieve().bodyToMono(LOW_STOCK_RESPONSE)
                 .map(ApiResponse::getData)
                 .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), data)));
     }

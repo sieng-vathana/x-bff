@@ -59,7 +59,7 @@ public class StoreImageUrlResolver {
                         store.postalCode(), store.phone(), store.alternatePhone(), store.email(), store.website(),
                         store.latitude(), store.longitude(), images, store.status(), store.marketplaceStatus(),
                         store.marketplaceAppliedAt(), store.marketplaceApprovedAt(), store.rejectionReason(),
-                        store.createdAt(), store.updatedAt()));
+                        store.createdAt(), store.updatedAt(), store.openingHours()));
     }
 
     public Mono<PageResponse<StoreResponse>> resolvePage(PageResponse<StoreResponse> page) {
@@ -84,7 +84,8 @@ public class StoreImageUrlResolver {
         return Flux.fromIterable(stores)
                 .concatMap(store -> resolve(store.image())
                         .map(file -> new MarketplaceStoreResponse(
-                                store.id(), store.name(), store.code(), store.storeType(), store.city(), store.countryCode(), file.url())))
+                                store.id(), store.name(), store.code(), store.storeType(), store.city(), store.countryCode(),
+                                file.url(), store.openingHours())))
                 .collectList();
     }
 

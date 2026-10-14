@@ -169,7 +169,7 @@ public class StoreController {
                 request.businessId(), request.name(), request.code(), request.storeType(), request.addressLine1(), request.addressLine2(),
                 request.landmark(), request.city(), request.stateProvince(), request.countryCode(), request.postalCode(),
                 request.phone(), request.alternatePhone(), request.email(), request.website(), request.latitude(),
-                request.longitude(), images));
+                request.longitude(), images, request.openingHours()));
     }
 
     private Mono<UpdateStoreRequest> withStorageUrls(UpdateStoreRequest request) {
@@ -180,7 +180,7 @@ public class StoreController {
                 request.name(), request.code(), request.storeType(), request.addressLine1(), request.addressLine2(), request.landmark(),
                 request.city(), request.stateProvince(), request.countryCode(), request.postalCode(), request.phone(),
                 request.alternatePhone(), request.email(), request.website(), request.latitude(), request.longitude(),
-                images, request.status()));
+                images, request.status(), request.openingHours(), request.clearOpeningHours()));
     }
 
     @PostMapping("/{id}/marketplace/apply")
@@ -232,6 +232,22 @@ public class StoreController {
                 .map(store -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Marketplace store rejected", store)));
     }
 
+    @PostMapping("/{id}/marketplace/request-changes")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:manage')")
+    public Mono<ResponseEntity<ApiResponse<StoreResponse>>> requestMarketplaceChanges(
+            @PathVariable Long id,
+            @Valid @RequestBody ReviewMarketplaceRequest request) {
+        return storeClient.post()
+                .uri("/{id}/marketplace/request-changes", id)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
+                .map(ApiResponse::getData)
+                .flatMap(storeImageUrlResolver::resolveResponse)
+                .map(store -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
+                        "Marketplace application returned to the merchant for updates", store)));
+    }
+
     @GetMapping("/marketplace/pending")
     @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:manage') or hasAuthority('x-store:read')")
     public Mono<ResponseEntity<ApiResponse<List<StoreResponse>>>> listPendingMarketplace(
@@ -240,6 +256,27 @@ public class StoreController {
         return storeClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/marketplace/pending")
+                        .queryParam("page", page)
+                        .queryParam("size", size)
+                        .build())
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<PageResponse<StoreResponse>>>() {})
+                .map(ApiResponse::getData)
+                .map(PageResponse::content)
+                .flatMap(stores -> Flux.fromIterable(stores)
+                        .concatMap(storeImageUrlResolver::resolveResponse)
+                        .collectList())
+                .map(stores -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), stores)));
+    }
+
+    @GetMapping("/marketplace/needs-changes")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:manage') or hasAuthority('x-store:read')")
+    public Mono<ResponseEntity<ApiResponse<List<StoreResponse>>>> listMarketplaceNeedsChanges(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
+        return storeClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/marketplace/needs-changes")
                         .queryParam("page", page)
                         .queryParam("size", size)
                         .build())

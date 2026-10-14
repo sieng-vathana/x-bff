@@ -25,7 +25,9 @@ public record UpdateStoreRequest(
         BigDecimal latitude,
         BigDecimal longitude,
         List<@Valid StoreImageRequest> images,
-        Integer status) {
+        Integer status,
+        @Valid StoreOpeningHours openingHours,
+        Boolean clearOpeningHours) {
 
     public UpdateStoreRequest(String name, String code,
                               String addressLine1, String addressLine2, String landmark,
@@ -36,6 +38,6 @@ public record UpdateStoreRequest(
                               Integer status) {
         this(name, code, "GENERAL_RETAIL", addressLine1, addressLine2, landmark,
              city, stateProvince, countryCode, postalCode, phone, alternatePhone,
-             email, website, latitude, longitude, images, status);
+             email, website, latitude, longitude, images, status, null, false);
     }
 }

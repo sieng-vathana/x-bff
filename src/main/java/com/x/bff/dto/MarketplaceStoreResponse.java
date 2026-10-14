@@ -7,10 +7,11 @@ public record MarketplaceStoreResponse(
         String storeType,
         String city,
         String countryCode,
-        String image) {
+        String image,
+        StoreOpeningHours openingHours) {
 
     public MarketplaceStoreResponse(Long id, String name, String code, String city, String countryCode, String image) {
-        this(id, name, code, null, city, countryCode, image);
+        this(id, name, code, null, city, countryCode, image, null);
     }
 }
 

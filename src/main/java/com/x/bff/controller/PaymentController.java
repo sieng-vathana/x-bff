@@ -98,10 +98,12 @@ public class PaymentController {
     @GetMapping("/reports/breakdown")
     @PreAuthorize("hasAuthority('x-report:read')")
     public Mono<ResponseEntity<?>> breakdown(
-            @RequestParam Long storeId, @RequestParam String from, @RequestParam String to) {
+            @RequestParam Long storeId, @RequestParam String currencyCode,
+            @RequestParam String from, @RequestParam String to) {
         return forward(paymentClient.get()
                 .uri(uri -> uri.path("/reports/breakdown")
                         .queryParam("storeId", storeId)
+                        .queryParam("currencyCode", currencyCode)
                         .queryParam("from", from)
                         .queryParam("to", to)
                         .build()));

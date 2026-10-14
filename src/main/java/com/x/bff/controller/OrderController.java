@@ -110,10 +110,12 @@ public class OrderController {
     @GetMapping("/reports/sales-summary")
     @PreAuthorize("hasAuthority('x-report:read')")
     public Mono<ResponseEntity<?>> salesSummary(
-            @RequestParam Long storeId, @RequestParam String from, @RequestParam String to) {
+            @RequestParam Long storeId, @RequestParam String currencyCode,
+            @RequestParam String from, @RequestParam String to) {
         return forward(orderClient.get()
                 .uri(uri -> uri.path("/reports/sales-summary")
                         .queryParam("storeId", storeId)
+                        .queryParam("currencyCode", currencyCode)
                         .queryParam("from", from)
                         .queryParam("to", to)
                         .build()));
@@ -122,11 +124,13 @@ public class OrderController {
     @GetMapping("/reports/top-products")
     @PreAuthorize("hasAuthority('x-report:read')")
     public Mono<ResponseEntity<?>> topProducts(
-            @RequestParam Long storeId, @RequestParam String from, @RequestParam String to,
+            @RequestParam Long storeId, @RequestParam String currencyCode,
+            @RequestParam String from, @RequestParam String to,
             @RequestParam(defaultValue = "10") int limit) {
         return forward(orderClient.get()
                 .uri(uri -> uri.path("/reports/top-products")
                         .queryParam("storeId", storeId)
+                        .queryParam("currencyCode", currencyCode)
                         .queryParam("from", from)
                         .queryParam("to", to)
                         .queryParam("limit", limit)
@@ -136,10 +140,12 @@ public class OrderController {
     @GetMapping("/reports/sales-trend")
     @PreAuthorize("hasAuthority('x-report:read')")
     public Mono<ResponseEntity<?>> salesTrend(
-            @RequestParam Long storeId, @RequestParam String from, @RequestParam String to) {
+            @RequestParam Long storeId, @RequestParam String currencyCode,
+            @RequestParam String from, @RequestParam String to) {
         return forward(orderClient.get()
                 .uri(uri -> uri.path("/reports/sales-trend")
                         .queryParam("storeId", storeId)
+                        .queryParam("currencyCode", currencyCode)
                         .queryParam("from", from)
                         .queryParam("to", to)
                         .build()));
