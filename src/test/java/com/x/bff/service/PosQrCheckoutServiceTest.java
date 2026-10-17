@@ -1,5 +1,6 @@
 package com.x.bff.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.x.bff.dto.PosOrderItemRequest;
 import com.x.bff.dto.PosQrCheckoutRequest;
@@ -9,9 +10,15 @@ import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.HttpMessageWriter;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.mock.http.client.reactive.MockClientHttpRequest;
+import org.springframework.web.reactive.function.BodyInserter;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ClientResponse;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -20,6 +27,8 @@ import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -93,6 +102,86 @@ class PosQrCheckoutServiceTest {
 
         assertThat(payment.request().url().getPath()).isEqualTo("/api/v1/payments/simulated-qr");
         assertThat(imageRequest.get()).isNull();
+    }
+
+    @Test
+    void createsBakongCheckoutPayingTheBusinessOwnAccount() throws Exception {
+        CapturedJsonExchange order = new CapturedJsonExchange("""
+                {"status":1,"code":201,"data":{"id":44,"orderNo":"ORD-44","grandTotal":3.00,"currencyCode":"USD"}}
+                """);
+        String qrImage = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
+        CapturedJsonExchange payment = new CapturedJsonExchange("""
+                {"status":1,"code":201,"data":{"transactionId":"md5-44","qrImageUrl":"%s","provider":"BAKONG"}}
+                """.formatted(qrImage));
+        CapturedJsonExchange business = new CapturedJsonExchange("""
+                {"status":1,"code":200,"data":{"id":2,"name":"TinhLok Coffee","bakongAccountId":" tinhlok_shop@aclb "}}
+                """);
+        PosQrCheckoutService service = new PosQrCheckoutService(
+                client(order), client(payment), WebClient.builder().build(), businessClient(business), OBJECT_MAPPER);
+
+        StepVerifier.create(service.createBakong(request()))
+                .assertNext(result -> assertThat(result.payment().path("qrImageDataUrl").asText()).isEqualTo(qrImage))
+                .verifyComplete();
+
+        assertThat(business.request().url().getPath()).isEqualTo("/api/v1/businesses/2");
+        assertThat(payment.request().url().getPath()).isEqualTo("/api/v1/payments/bakong-qr");
+        JsonNode body = OBJECT_MAPPER.readTree(bodyOf(payment.request()));
+        assertThat(body.path("bakongAccountId").asText()).isEqualTo("tinhlok_shop@aclb");
+        assertThat(body.path("merchantName").asText()).isEqualTo("TinhLok Coffee");
+        assertThat(body.path("billNumber").asText()).isEqualTo("ORD-44");
+        assertThat(body.path("orderId").asLong()).isEqualTo(44L);
+    }
+
+    @Test
+    void refusesBakongCheckoutBeforeCreatingAnOrderWhenNoAccountIsSet() {
+        CapturedJsonExchange order = new CapturedJsonExchange("""
+                {"status":1,"code":201,"data":{"id":45,"orderNo":"ORD-45","grandTotal":3.00,"currencyCode":"USD"}}
+                """);
+        CapturedJsonExchange business = new CapturedJsonExchange("""
+                {"status":1,"code":200,"data":{"id":2,"name":"TinhLok Coffee","bakongAccountId":null}}
+                """);
+        CapturedJsonExchange payment = new CapturedJsonExchange("{}");
+        PosQrCheckoutService service = new PosQrCheckoutService(
+                client(order), client(payment), WebClient.builder().build(), businessClient(business), OBJECT_MAPPER);
+
+        StepVerifier.create(service.createBakong(request()))
+                .expectErrorSatisfies(error -> {
+                    assertThat(error).isInstanceOf(ResponseStatusException.class);
+                    assertThat(((ResponseStatusException) error).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(((ResponseStatusException) error).getReason()).contains("Bakong account ID");
+                })
+                .verify();
+
+        assertThat(order.request()).isNull();
+        assertThat(payment.request()).isNull();
+    }
+
+    private WebClient businessClient(CapturedJsonExchange exchange) {
+        return WebClient.builder()
+                .baseUrl("http://business-service/api/v1/businesses")
+                .exchangeFunction(exchange::exchange)
+                .build();
+    }
+
+    private String bodyOf(ClientRequest request) {
+        MockClientHttpRequest captured = new MockClientHttpRequest(request.method(), request.url());
+        request.body().insert(captured, new BodyInserter.Context() {
+            @Override
+            public List<HttpMessageWriter<?>> messageWriters() {
+                return ExchangeStrategies.withDefaults().messageWriters();
+            }
+
+            @Override
+            public Optional<ServerHttpRequest> serverRequest() {
+                return Optional.empty();
+            }
+
+            @Override
+            public Map<String, Object> hints() {
+                return Map.of();
+            }
+        }).block();
+        return captured.getBodyAsString().block();
     }
 
     private PosQrCheckoutRequest request() {

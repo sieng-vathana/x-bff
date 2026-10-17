@@ -16,6 +16,7 @@ import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.reactive.resource.NoResourceFoundException;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
 public class BffExceptionHandler {
@@ -98,6 +99,13 @@ public class BffExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(NoResourceFoundException ex) {
         return new ResponseEntity<>(ApiResponse.error(404, "Resource not found."), HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResponseStatus(ResponseStatusException ex) {
+        HttpStatusCode status = ex.getStatusCode();
+        String message = ex.getReason() != null ? ex.getReason() : "Request could not be processed.";
+        return new ResponseEntity<>(ApiResponse.error(status.value(), message), status);
     }
 
     @ExceptionHandler(Exception.class)

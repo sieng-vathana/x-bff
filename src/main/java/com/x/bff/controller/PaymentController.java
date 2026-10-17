@@ -75,6 +75,35 @@ public class PaymentController {
                                 response)));
     }
 
+    @PostMapping("/pos-qr-bakong")
+    @PreAuthorize("hasAuthority('x-order:create') and hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<ApiResponse<PosQrCheckoutResponse>>> createBakongPosQr(
+            @Valid @RequestBody PosQrCheckoutRequest request) {
+        return posQrCheckoutService.createBakong(request)
+                .map(response -> ResponseEntity.status(HttpStatus.CREATED)
+                        .body(ApiResponse.success(
+                                HttpStatus.CREATED.value(),
+                                "Bakong KHQR checkout created",
+                                response)));
+    }
+
+    /** Asks Bakong whether a pending KHQR was paid; the POS calls this while the QR is shown. */
+    @PostMapping("/{id}/bakong-check")
+    @PreAuthorize("hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> checkBakong(@PathVariable Long id) {
+        return forward(paymentClient.post().uri("/{id}/bakong-check", id));
+    }
+
+    /** Cashier confirms a KHQR payment after seeing it arrive in the shop's bank app. */
+    @PostMapping("/{id}/confirm")
+    @PreAuthorize("hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<?>> confirm(@PathVariable Long id, @RequestBody JsonNode request) {
+        return forward(paymentClient.post()
+                .uri("/{id}/confirm", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
     @PostMapping("/khqrpay/webhook")
     public Mono<ResponseEntity<?>> khqrPayWebhook(@RequestBody JsonNode request) {
         return forward(paymentClient.post()

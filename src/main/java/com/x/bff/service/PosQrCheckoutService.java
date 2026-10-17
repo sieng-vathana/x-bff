@@ -8,10 +8,12 @@ import com.x.bff.dto.PosQrCheckoutRequest;
 import com.x.bff.dto.PosQrCheckoutResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
 import java.net.URI;
@@ -22,9 +24,13 @@ public class PosQrCheckoutService {
     private static final ParameterizedTypeReference<ApiResponse<JsonNode>> JSON_RESPONSE =
             new ParameterizedTypeReference<>() {};
 
+    /** KHQR bill numbers are limited to 25 characters by the NBC specification. */
+    private static final int KHQR_BILL_NUMBER_LIMIT = 25;
+
     private final WebClient orderClient;
     private final WebClient paymentClient;
     private final WebClient imageClient;
+    private final WebClient businessClient;
     private final ObjectMapper objectMapper;
 
     @Autowired
@@ -36,6 +42,7 @@ public class PosQrCheckoutService {
                 clientFactory.forService("order", "/api/v1/orders"),
                 clientFactory.forService("payment", "/api/v1/payments"),
                 webClientBuilder.clone().build(),
+                clientFactory.forService("business", "/api/v1/businesses"),
                 objectMapper);
     }
 
@@ -44,21 +51,63 @@ public class PosQrCheckoutService {
             WebClient paymentClient,
             WebClient imageClient,
             ObjectMapper objectMapper) {
+        this(orderClient, paymentClient, imageClient, null, objectMapper);
+    }
+
+    PosQrCheckoutService(
+            WebClient orderClient,
+            WebClient paymentClient,
+            WebClient imageClient,
+            WebClient businessClient,
+            ObjectMapper objectMapper) {
         this.orderClient = orderClient;
         this.paymentClient = paymentClient;
         this.imageClient = imageClient;
+        this.businessClient = businessClient;
         this.objectMapper = objectMapper;
     }
 
     public Mono<PosQrCheckoutResponse> create(PosQrCheckoutRequest request) {
-        return create(request, "/qr");
+        return create(request, "/qr", null);
     }
 
     public Mono<PosQrCheckoutResponse> createSimulated(PosQrCheckoutRequest request) {
-        return create(request, "/simulated-qr");
+        return create(request, "/simulated-qr", null);
     }
 
-    private Mono<PosQrCheckoutResponse> create(PosQrCheckoutRequest request, String paymentPath) {
+    /**
+     * KHQR paid into the business's own Bakong account. The account is read from the business
+     * record on the server, so the browser cannot choose where the money goes.
+     */
+    public Mono<PosQrCheckoutResponse> createBakong(PosQrCheckoutRequest request) {
+        return bakongPayee(request.businessId())
+                .flatMap(payee -> create(request, "/bakong-qr", payee));
+    }
+
+    private Mono<ObjectNode> bakongPayee(Long businessId) {
+        if (businessClient == null) {
+            return Mono.error(new IllegalStateException("Business service client is not configured"));
+        }
+        return businessClient.get()
+                .uri("/{id}", businessId)
+                .retrieve()
+                .bodyToMono(JSON_RESPONSE)
+                .map(this::requireData)
+                .map(business -> {
+                    String account = business.path("bakongAccountId").asText("");
+                    if (!StringUtils.hasText(account)) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Add your Bakong account ID in POS settings before taking KHQR payments.");
+                    }
+                    ObjectNode payee = objectMapper.createObjectNode();
+                    payee.put("bakongAccountId", account.trim());
+                    payee.put("merchantName", requiredText(business, "name"));
+                    return payee;
+                });
+    }
+
+    private Mono<PosQrCheckoutResponse> create(
+            PosQrCheckoutRequest request, String paymentPath, ObjectNode extraPaymentFields) {
         ObjectNode orderRequest = objectMapper.createObjectNode();
         orderRequest.put("businessId", request.businessId());
         orderRequest.put("storeId", request.storeId());
@@ -82,12 +131,13 @@ public class PosQrCheckoutService {
                 .retrieve()
                 .bodyToMono(JSON_RESPONSE)
                 .map(this::requireData)
-                .flatMap(order -> createPayment(request, order, paymentPath)
+                .flatMap(order -> createPayment(request, order, paymentPath, extraPaymentFields)
                         .flatMap(payment -> embedQrImage(payment)
                                 .map(enrichedPayment -> new PosQrCheckoutResponse(order, enrichedPayment))));
     }
 
-    private Mono<JsonNode> createPayment(PosQrCheckoutRequest request, JsonNode order, String paymentPath) {
+    private Mono<JsonNode> createPayment(
+            PosQrCheckoutRequest request, JsonNode order, String paymentPath, ObjectNode extraPaymentFields) {
         long orderId = requiredLong(order, "id");
         String currencyCode = requiredText(order, "currencyCode");
         JsonNode grandTotal = order.get("grandTotal");
@@ -105,6 +155,15 @@ public class PosQrCheckoutService {
         paymentRequest.put("idempotencyKey", request.paymentIdempotencyKey());
         if (StringUtils.hasText(request.paymentNote())) {
             paymentRequest.put("note", request.paymentNote());
+        }
+        if (extraPaymentFields != null) {
+            paymentRequest.setAll(extraPaymentFields);
+            String orderNo = order.path("orderNo").asText("");
+            if (StringUtils.hasText(orderNo)) {
+                paymentRequest.put("billNumber", orderNo.length() <= KHQR_BILL_NUMBER_LIMIT
+                        ? orderNo
+                        : orderNo.substring(0, KHQR_BILL_NUMBER_LIMIT));
+            }
         }
 
         return paymentClient.post()

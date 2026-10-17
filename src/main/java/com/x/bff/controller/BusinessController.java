@@ -135,7 +135,12 @@ public class BusinessController {
             @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max = 160) String name,
             @jakarta.validation.constraints.Pattern(regexp = "[A-Za-z]{3}") String defaultCurrencyCode,
             @jakarta.validation.constraints.Positive BigDecimal usdToKhrExchangeRate,
-            Boolean pricesIncludeTax) {
+            Boolean pricesIncludeTax,
+            @jakarta.validation.constraints.Size(max = 32)
+            @jakarta.validation.constraints.Pattern(
+                    regexp = "|[A-Za-z0-9._-]+@[A-Za-z0-9._-]+",
+                    message = "Bakong account ID must look like name@bank")
+            String bakongAccountId) {
     }
 
     private record CreateBusinessCommand(
