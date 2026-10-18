@@ -10,6 +10,10 @@ import com.x.bff.dto.ExpirySummaryResponse;
 import com.x.bff.dto.ExpiryWriteOffRequest;
 import com.x.bff.dto.StockMovementResponse;
 import com.x.bff.dto.StockReservationRequest;
+import com.x.bff.dto.CreateStockTransferRequest;
+import com.x.bff.dto.ReceiveStockTransferRequest;
+import com.x.bff.dto.StockTransferCommand;
+import com.x.bff.dto.StockTransferResponse;
 import com.x.bff.service.ServiceClientFactory;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -49,6 +53,10 @@ public class StockController {
             EXPIRY_BATCHES_RESPONSE = new ParameterizedTypeReference<>() {};
     private static final ParameterizedTypeReference<ApiResponse<ExpirySummaryResponse>>
             EXPIRY_SUMMARY_RESPONSE = new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<PageResponse<StockTransferResponse>>>
+            STOCK_TRANSFERS_RESPONSE = new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<StockTransferResponse>>
+            STOCK_TRANSFER_RESPONSE = new ParameterizedTypeReference<>() {};
 
     public StockController(ServiceClientFactory clientFactory) {
         this.inventoryClient = clientFactory.forService("inventory", "/api/v1/inventory");
@@ -144,6 +152,77 @@ public class StockController {
                 .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), data)));
     }
 
+    @GetMapping("/transfers")
+    @PreAuthorize("hasAuthority('x-inventory:read')")
+    public Mono<ResponseEntity<ApiResponse<PageResponse<StockTransferResponse>>>> transfers(
+            @RequestParam @Positive Long storeId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return inventoryClient.get().uri(uri -> {
+                    var builder = uri.path("/transfers").queryParam("storeId", storeId)
+                            .queryParam("page", page).queryParam("size", size);
+                    if (status != null && !status.isBlank()) builder.queryParam("status", status);
+                    return builder.build();
+                }).retrieve().bodyToMono(STOCK_TRANSFERS_RESPONSE)
+                .map(ApiResponse::getData)
+                .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), data)));
+    }
+
+    @GetMapping("/transfers/{id}")
+    @PreAuthorize("hasAuthority('x-inventory:read')")
+    public Mono<ResponseEntity<ApiResponse<StockTransferResponse>>> transfer(@PathVariable @Positive Long id) {
+        return transferResponse(inventoryClient.get().uri("/transfers/{id}", id));
+    }
+
+    @PostMapping("/transfers")
+    @PreAuthorize("hasAuthority('x-inventory:create')")
+    public Mono<ResponseEntity<ApiResponse<StockTransferResponse>>> createTransfer(
+            @Valid @RequestBody CreateStockTransferRequest request) {
+        return transferResponse(inventoryClient.post().uri("/transfers").bodyValue(request),
+                HttpStatus.CREATED, "Stock transfer requested");
+    }
+
+    @PostMapping("/transfers/{id}/approve")
+    @PreAuthorize("hasAuthority('x-inventory:update')")
+    public Mono<ResponseEntity<ApiResponse<StockTransferResponse>>> approveTransfer(
+            @PathVariable @Positive Long id, @Valid @RequestBody StockTransferCommand request) {
+        return transferResponse(inventoryClient.post().uri("/transfers/{id}/approve", id).bodyValue(request),
+                HttpStatus.OK, "Stock transfer approved");
+    }
+
+    @PostMapping("/transfers/{id}/reject")
+    @PreAuthorize("hasAuthority('x-inventory:update')")
+    public Mono<ResponseEntity<ApiResponse<StockTransferResponse>>> rejectTransfer(
+            @PathVariable @Positive Long id, @Valid @RequestBody StockTransferCommand request) {
+        return transferResponse(inventoryClient.post().uri("/transfers/{id}/reject", id).bodyValue(request),
+                HttpStatus.OK, "Stock transfer rejected");
+    }
+
+    @PostMapping("/transfers/{id}/cancel")
+    @PreAuthorize("hasAuthority('x-inventory:update')")
+    public Mono<ResponseEntity<ApiResponse<StockTransferResponse>>> cancelTransfer(
+            @PathVariable @Positive Long id, @Valid @RequestBody StockTransferCommand request) {
+        return transferResponse(inventoryClient.post().uri("/transfers/{id}/cancel", id).bodyValue(request),
+                HttpStatus.OK, "Stock transfer cancelled");
+    }
+
+    @PostMapping("/transfers/{id}/dispatch")
+    @PreAuthorize("hasAuthority('x-inventory:stock-out')")
+    public Mono<ResponseEntity<ApiResponse<StockTransferResponse>>> dispatchTransfer(
+            @PathVariable @Positive Long id, @Valid @RequestBody StockTransferCommand request) {
+        return transferResponse(inventoryClient.post().uri("/transfers/{id}/dispatch", id).bodyValue(request),
+                HttpStatus.OK, "Stock transfer dispatched");
+    }
+
+    @PostMapping("/transfers/{id}/receive")
+    @PreAuthorize("hasAuthority('x-inventory:stock-in')")
+    public Mono<ResponseEntity<ApiResponse<StockTransferResponse>>> receiveTransfer(
+            @PathVariable @Positive Long id, @Valid @RequestBody ReceiveStockTransferRequest request) {
+        return transferResponse(inventoryClient.post().uri("/transfers/{id}/receive", id).bodyValue(request),
+                HttpStatus.OK, "Stock transfer receipt recorded");
+    }
+
     @PostMapping("/expiry/batches/{batchId}/write-off")
     @PreAuthorize("hasAuthority('x-inventory:stock-out')")
     public Mono<ResponseEntity<ApiResponse<StockBalanceResponse>>> writeOffExpiredBatch(
@@ -196,5 +275,19 @@ public class StockController {
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<StockBalanceResponse>>() {})
                 .map(ApiResponse::getData)
                 .map(data -> ResponseEntity.status(status).body(ApiResponse.success(status.value(), message, data)));
+    }
+
+    private Mono<ResponseEntity<ApiResponse<StockTransferResponse>>> transferResponse(
+            WebClient.RequestHeadersSpec<?> request) {
+        return transferResponse(request, HttpStatus.OK, null);
+    }
+
+    private Mono<ResponseEntity<ApiResponse<StockTransferResponse>>> transferResponse(
+            WebClient.RequestHeadersSpec<?> request, HttpStatus status, String message) {
+        return request.retrieve().bodyToMono(STOCK_TRANSFER_RESPONSE)
+                .map(ApiResponse::getData)
+                .map(data -> ResponseEntity.status(status).body(message == null
+                        ? ApiResponse.success(status.value(), data)
+                        : ApiResponse.success(status.value(), message, data)));
     }
 }
