@@ -5,13 +5,16 @@ import com.x.bff.dto.CreateBusinessRequest;
 import com.x.bff.dto.UserCredentialsResponse;
 import com.x.bff.service.ServiceClientFactory;
 import com.x.bff.service.UserServiceClient;
+import com.x.bff.utils.XUtil;
 import com.sharedlib.response.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -109,6 +112,54 @@ public class BusinessController {
                 .map(businesses -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), businesses)));
     }
 
+    @GetMapping("/{id}/telegram")
+    @PreAuthorize("hasAuthority('x-business:read')")
+    public Mono<ResponseEntity<?>> telegramStatus(@PathVariable Long id, Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.get().uri("/{id}/telegram", id)));
+    }
+
+    @PutMapping("/{id}/telegram")
+    @PreAuthorize("hasAuthority('x-business:update')")
+    public Mono<ResponseEntity<?>> updateTelegramAlerts(
+            @PathVariable Long id,
+            @Valid @RequestBody TelegramAlertsRequest request,
+            Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.put()
+                        .uri("/{id}/telegram", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .bodyValue(request)));
+    }
+
+    @DeleteMapping("/{id}/telegram")
+    @PreAuthorize("hasAuthority('x-business:update')")
+    public Mono<ResponseEntity<?>> disconnectTelegram(@PathVariable Long id, Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.delete().uri("/{id}/telegram", id)));
+    }
+
+    /** One-time t.me links that connect a Telegram chat when someone presses Start. */
+    @PostMapping("/{id}/telegram/link")
+    @PreAuthorize("hasAuthority('x-business:update')")
+    public Mono<ResponseEntity<?>> createTelegramLink(@PathVariable Long id, Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.post().uri("/{id}/telegram/link", id)));
+    }
+
+    @PostMapping("/{id}/telegram/test")
+    @PreAuthorize("hasAuthority('x-business:update')")
+    public Mono<ResponseEntity<?>> sendTelegramTest(@PathVariable Long id, Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.post().uri("/{id}/telegram/test", id)));
+    }
+
+    private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
+        return request.exchangeToMono(response -> response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .map(body -> XUtil.toJsonResponse(body, response.statusCode())));
+    }
+
     private Mono<UserCredentialsResponse> currentUser(Authentication authentication) {
         return userServiceClient.findByUsername(authentication.getName());
     }
@@ -149,6 +200,15 @@ public class BusinessController {
                     regexp = "|[A-Za-z0-9._-]+@[A-Za-z0-9._-]+",
                     message = "Bakong account ID must look like name@bank")
             String bakongAccountId) {
+    }
+
+    private record TelegramAlertsRequest(
+            Boolean khqrAlerts,
+            Boolean orderAlerts,
+            Boolean lowStockAlerts,
+            Boolean dailySummary,
+            @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(100000) Integer lowStockThreshold,
+            @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(23) Integer dailySummaryHour) {
     }
 
     private record CreateBusinessCommand(
