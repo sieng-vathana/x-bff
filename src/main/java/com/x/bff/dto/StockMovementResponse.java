@@ -6,6 +6,7 @@ public record StockMovementResponse(
         Long id,
         Long storeId,
         Long variantId,
+        Long batchId,
         String movementType,
         long quantityDelta,
         String referenceType,

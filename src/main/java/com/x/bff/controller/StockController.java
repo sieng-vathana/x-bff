@@ -4,6 +4,10 @@ import com.sharedlib.response.ApiResponse;
 import com.sharedlib.response.PageResponse;
 import com.x.bff.dto.StockBalanceResponse;
 import com.x.bff.dto.StockChangeRequest;
+import com.x.bff.dto.ExpiryBatchResponse;
+import com.x.bff.dto.ExpiryBatchUpdateRequest;
+import com.x.bff.dto.ExpirySummaryResponse;
+import com.x.bff.dto.ExpiryWriteOffRequest;
 import com.x.bff.dto.StockMovementResponse;
 import com.x.bff.dto.StockReservationRequest;
 import com.x.bff.service.ServiceClientFactory;
@@ -19,6 +23,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -39,6 +45,10 @@ public class StockController {
             STOCK_MOVEMENTS_RESPONSE = new ParameterizedTypeReference<>() {};
     private static final ParameterizedTypeReference<ApiResponse<PageResponse<StockBalanceResponse>>>
             LOW_STOCK_RESPONSE = new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<PageResponse<ExpiryBatchResponse>>>
+            EXPIRY_BATCHES_RESPONSE = new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<ExpirySummaryResponse>>
+            EXPIRY_SUMMARY_RESPONSE = new ParameterizedTypeReference<>() {};
 
     public StockController(ServiceClientFactory clientFactory) {
         this.inventoryClient = clientFactory.forService("inventory", "/api/v1/inventory");
@@ -108,6 +118,58 @@ public class StockController {
                 .retrieve().bodyToMono(LOW_STOCK_RESPONSE)
                 .map(ApiResponse::getData)
                 .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), data)));
+    }
+
+    @GetMapping("/expiry/batches")
+    @PreAuthorize("hasAuthority('x-inventory:read')")
+    public Mono<ResponseEntity<ApiResponse<PageResponse<ExpiryBatchResponse>>>> expiryBatches(
+            @RequestParam @Positive Long storeId,
+            @RequestParam(defaultValue = "ALL") String filter,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return inventoryClient.get().uri(uri -> uri.path("/expiry/batches")
+                        .queryParam("storeId", storeId).queryParam("filter", filter)
+                        .queryParam("page", page).queryParam("size", size).build())
+                .retrieve().bodyToMono(EXPIRY_BATCHES_RESPONSE)
+                .map(ApiResponse::getData)
+                .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), data)));
+    }
+
+    @GetMapping("/expiry/summary")
+    @PreAuthorize("hasAuthority('x-inventory:read')")
+    public Mono<ResponseEntity<ApiResponse<ExpirySummaryResponse>>> expirySummary(@RequestParam @Positive Long storeId) {
+        return inventoryClient.get().uri(uri -> uri.path("/expiry/summary").queryParam("storeId", storeId).build())
+                .retrieve().bodyToMono(EXPIRY_SUMMARY_RESPONSE)
+                .map(ApiResponse::getData)
+                .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), data)));
+    }
+
+    @PostMapping("/expiry/batches/{batchId}/write-off")
+    @PreAuthorize("hasAuthority('x-inventory:stock-out')")
+    public Mono<ResponseEntity<ApiResponse<StockBalanceResponse>>> writeOffExpiredBatch(
+            @PathVariable @Positive Long batchId,
+            @RequestParam @Positive Long storeId,
+            @Valid @RequestBody ExpiryWriteOffRequest request) {
+        return inventoryClient.post().uri(uri -> uri.path("/expiry/batches/{batchId}/write-off")
+                        .queryParam("storeId", storeId).build(batchId))
+                .bodyValue(request).retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<StockBalanceResponse>>() {})
+                .map(ApiResponse::getData)
+                .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Expired stock written off", data)));
+    }
+
+    @PutMapping("/expiry/batches/{batchId}")
+    @PreAuthorize("hasAuthority('x-inventory:update')")
+    public Mono<ResponseEntity<ApiResponse<ExpiryBatchResponse>>> updateExpiryBatch(
+            @PathVariable @Positive Long batchId,
+            @RequestParam @Positive Long storeId,
+            @Valid @RequestBody ExpiryBatchUpdateRequest request) {
+        return inventoryClient.put().uri(uri -> uri.path("/expiry/batches/{batchId}")
+                        .queryParam("storeId", storeId).build(batchId))
+                .bodyValue(request).retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<ExpiryBatchResponse>>() {})
+                .map(ApiResponse::getData)
+                .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Stock batch updated", data)));
     }
 
     @PostMapping("/in")
