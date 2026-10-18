@@ -121,6 +121,9 @@ public class PosQrCheckoutService {
             orderRequest.put("roundingIncrement", request.roundingIncrement());
         }
         orderRequest.put("allowNegativeStock", Boolean.TRUE.equals(request.allowNegativeStock()));
+        if (request.loyaltyPointsToRedeem() != null && request.loyaltyPointsToRedeem() > 0) {
+            orderRequest.put("loyaltyPointsToRedeem", request.loyaltyPointsToRedeem());
+        }
         orderRequest.put("idempotencyKey", request.idempotencyKey());
         orderRequest.set("items", objectMapper.valueToTree(request.items()));
 

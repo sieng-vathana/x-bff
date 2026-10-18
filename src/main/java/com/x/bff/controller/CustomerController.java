@@ -57,6 +57,35 @@ public class CustomerController {
                         .build())));
     }
 
+    /** Finds a saved customer by phone number, however the number is typed. */
+    @GetMapping("/lookup")
+    @PreAuthorize("hasAuthority('x-customer:read')")
+    public Mono<ResponseEntity<?>> lookupByPhone(
+            @RequestParam Long businessId,
+            @RequestParam String phone,
+            Authentication authentication) {
+        // Passed as a URI variable so a leading + is encoded instead of read as a space.
+        return requireBusinessAccess(businessId, authentication)
+                .then(forward(customerClient.get().uri(uri -> uri
+                        .path("/lookup")
+                        .queryParam("businessId", businessId)
+                        .queryParam("phone", "{phone}")
+                        .build(java.util.Map.of("phone", phone)))));
+    }
+
+    @GetMapping("/{id:[0-9]+}/loyalty")
+    @PreAuthorize("hasAuthority('x-customer:read')")
+    public Mono<ResponseEntity<?>> loyalty(
+            @PathVariable Long id,
+            @RequestParam Long businessId,
+            Authentication authentication) {
+        return requireBusinessAccess(businessId, authentication)
+                .then(forward(customerClient.get().uri(uri -> uri
+                        .path("/{id}/loyalty")
+                        .queryParam("businessId", businessId)
+                        .build(id))));
+    }
+
     @GetMapping("/{id:[0-9]+}")
     @PreAuthorize("hasAuthority('x-customer:read')")
     public Mono<ResponseEntity<?>> get(
