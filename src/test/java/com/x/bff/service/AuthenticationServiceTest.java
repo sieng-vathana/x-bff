@@ -1,25 +1,35 @@
 package com.x.bff.service;
 
 import com.x.bff.dto.AuthRequest;
+import com.x.bff.dto.RegistrationRequest;
 import com.x.bff.security.ClientChannel;
 import com.x.bff.security.JwtUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthenticationServiceTest {
@@ -124,6 +134,133 @@ class AuthenticationServiceTest {
                 .expectNextMatches(response -> "access2".equals(response.getData().getAccessToken())
                         && "web".equals(response.getData().getChannel()))
                 .verifyComplete();
+    }
+
+    @Test
+    void failedRegistrationRemovesEverythingItCreatedEvenWhenOneRemovalFails() {
+        List<String> calls = new CopyOnWriteArrayList<>();
+        givenWorkspaceServices(
+                calls,
+                request -> isPost(request) ? created(NEW_BUSINESS) : noContent(),
+                request -> isPost(request) ? created(NEW_STORE) : failure(HttpStatus.INTERNAL_SERVER_ERROR),
+                request -> isPost(request) ? failure(HttpStatus.BAD_GATEWAY) : noContent());
+        when(userServiceClient.register(any(), any(), any(), any(), any()))
+                .thenReturn(Mono.just(new UserServiceClient.RegisteredUser(1L)));
+        when(userServiceClient.deleteFailedRegistration("owner", 12L)).thenReturn(Mono.empty());
+
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.register(registration(), ClientChannel.WEB))
+                .expectErrorMatches(error -> error instanceof WebClientResponseException response
+                        && response.getStatusCode().value() == 502)
+                .verify();
+        assertEquals(List.of(
+                "POST http://business/api/v1/businesses",
+                "POST http://store/api/v1/stores",
+                "POST http://customer/internal/marketplace/customer",
+                "DELETE http://customer/internal/marketplace/customer?userId=1&businessId=12",
+                "DELETE http://store/api/v1/stores/21/registration-failure",
+                "DELETE http://business/api/v1/businesses/12/registration-failure"), calls);
+        verify(userServiceClient).deleteFailedRegistration("owner", 12L);
+    }
+
+    @Test
+    void takenStoreCodeRemovesTheNewBusinessAndAccount() {
+        List<String> calls = new CopyOnWriteArrayList<>();
+        givenWorkspaceServices(
+                calls,
+                request -> isPost(request) ? created(NEW_BUSINESS) : noContent(),
+                request -> failure(HttpStatus.CONFLICT),
+                request -> noContent());
+        when(userServiceClient.register(any(), any(), any(), any(), any()))
+                .thenReturn(Mono.just(new UserServiceClient.RegisteredUser(1L)));
+        when(userServiceClient.deleteFailedRegistration("owner", 12L)).thenReturn(Mono.empty());
+
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.register(registration(), ClientChannel.WEB))
+                .expectError(WebClientResponseException.Conflict.class)
+                .verify();
+        assertEquals(List.of(
+                "POST http://business/api/v1/businesses",
+                "POST http://store/api/v1/stores",
+                "DELETE http://business/api/v1/businesses/12/registration-failure"), calls);
+        verify(userServiceClient).deleteFailedRegistration("owner", 12L);
+    }
+
+    @Test
+    void takenUsernameRemovesNothing() {
+        List<String> calls = new CopyOnWriteArrayList<>();
+        givenWorkspaceServices(calls, request -> noContent(), request -> noContent(), request -> noContent());
+        when(userServiceClient.register(any(), any(), any(), any(), any()))
+                .thenReturn(Mono.error(WebClientResponseException.create(409, "Conflict", HttpHeaders.EMPTY, new byte[0], null)));
+
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.register(registration(), ClientChannel.WEB))
+                .expectError(WebClientResponseException.Conflict.class)
+                .verify();
+        assertEquals(List.of(), calls);
+        verify(userServiceClient, never()).deleteFailedRegistration(any(), any());
+    }
+
+    private static final String NEW_BUSINESS = """
+            {"id":12,"ownerUserId":1,"name":"Demo Business","code":"DEMO","defaultCurrencyCode":"USD","status":1}""";
+
+    private static final String NEW_STORE = """
+            {"id":21,"businessId":12,"name":"Main Store","code":"MAIN","status":1}""";
+
+    private void givenWorkspaceServices(
+            List<String> calls,
+            Function<ClientRequest, ClientResponse> business,
+            Function<ClientRequest, ClientResponse> store,
+            Function<ClientRequest, ClientResponse> customer) {
+        when(serviceClientFactory.forService("business", "/api/v1/businesses"))
+                .thenReturn(recordingClient("http://business/api/v1/businesses", calls, business));
+        when(serviceClientFactory.forService("store", "/api/v1/stores"))
+                .thenReturn(recordingClient("http://store/api/v1/stores", calls, store));
+        when(serviceClientFactory.forService("customer", "/internal/marketplace"))
+                .thenReturn(recordingClient("http://customer/internal/marketplace", calls, customer));
+    }
+
+    private static WebClient recordingClient(
+            String baseUrl, List<String> calls, Function<ClientRequest, ClientResponse> responder) {
+        return WebClient.builder()
+                .baseUrl(baseUrl)
+                .exchangeFunction(request -> {
+                    calls.add(request.method() + " " + request.url());
+                    return Mono.just(responder.apply(request));
+                })
+                .build();
+    }
+
+    private static boolean isPost(ClientRequest request) {
+        return HttpMethod.POST.equals(request.method());
+    }
+
+    private static ClientResponse created(String data) {
+        return ClientResponse.create(HttpStatus.CREATED)
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .body("{\"status\":1,\"code\":201,\"data\":" + data + "}")
+                .build();
+    }
+
+    private static ClientResponse failure(HttpStatus status) {
+        return ClientResponse.create(status)
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .body("{\"status\":0,\"code\":" + status.value() + ",\"message\":\"" + status.getReasonPhrase() + "\"}")
+                .build();
+    }
+
+    private static ClientResponse noContent() {
+        return ClientResponse.create(HttpStatus.NO_CONTENT).build();
+    }
+
+    private static RegistrationRequest registration() {
+        return new RegistrationRequest(
+                "Shop Owner", "owner", "password123", "owner@example.com", "012345678",
+                "Demo Business", "DEMO", "USD", null, null, true, "Asia/Phnom_Penh", 1,
+                "Main Store", "MAIN", "Street 1", "Phnom Penh", "KH", null, null, null);
     }
 
     private static WebClient businessClient() {

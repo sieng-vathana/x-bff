@@ -9,6 +9,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class UserServiceClient {
@@ -48,6 +49,18 @@ public class UserServiceClient {
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<RegisteredUser>>() {})
                 .map(ApiResponse::getData);
+    }
+
+    /** Removes an account whose registration failed, with the roles made for its business. */
+    public Mono<Void> deleteFailedRegistration(String username, Long businessId) {
+        return userClient.delete()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/{username}/registration-failure")
+                        .queryParamIfPresent("businessId", Optional.ofNullable(businessId))
+                        .build(username))
+                .retrieve()
+                .toBodilessEntity()
+                .then();
     }
 
     public Mono<Void> assignOwnerStoreMembership(Long userId, Long storeId) {

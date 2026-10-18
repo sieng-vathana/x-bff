@@ -13,20 +13,26 @@ import com.x.bff.security.ClientChannel;
 import com.x.bff.security.JwtUtils;
 import com.sharedlib.response.ApiResponse;
 import com.sharedlib.response.PageResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
 @Service
 public class AuthenticationService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthenticationService.class);
 
     private final JwtUtils jwtUtils;
     private final UserServiceClient userServiceClient;
@@ -74,26 +80,74 @@ public class AuthenticationService {
         }
     }
 
+    /**
+     * Creates the owner account, business, first store and marketplace profile, then signs in.
+     * When a step fails, the records created before it are removed again, so the username,
+     * business code and store code are free for the next attempt.
+     */
     public Mono<ApiResponse<AuthResponse>> register(RegistrationRequest request, ClientChannel channel) {
-        return userServiceClient.register(
-                        request.fullName(), request.username(), request.password(), request.email(), request.phone())
-                .flatMap(user -> createBusiness(user.id(), request)
-                        .flatMap(business -> createStore(business.id(), request)
-                                .flatMap(store -> createMarketplaceCustomer(user, business, store, request)
-                                        .then(userServiceClient.ensureOwnerBusinessAccess(
-                                                user.id(), business.id(), List.of(store.id())))
-                                        .then(authenticate(new AuthRequest(request.username(), request.password()), channel)))));
+        return Mono.defer(() -> {
+            CreatedRecords created = new CreatedRecords();
+            return userServiceClient.register(
+                            request.fullName(), request.username(), request.password(), request.email(), request.phone())
+                    .doOnNext(user -> created.userId = user.id())
+                    .flatMap(user -> createBusiness(user.id(), request))
+                    .doOnNext(business -> created.businessId = business.id())
+                    .flatMap(business -> createStore(business.id(), request))
+                    .doOnNext(store -> created.storeId = store.id())
+                    .flatMap(store -> createMarketplaceCustomer(created.userId, created.businessId, store.id(), request)
+                            .then(userServiceClient.ensureOwnerBusinessAccess(
+                                    created.userId, created.businessId, List.of(store.id())))
+                            .thenReturn(store))
+                    .switchIfEmpty(Mono.error(() -> new IllegalStateException("Registration did not complete")))
+                    .onErrorResume(error -> undoRegistration(request.username(), created).then(Mono.error(error)))
+                    .flatMap(store -> authenticate(new AuthRequest(request.username(), request.password()), channel));
+        });
     }
 
     private Mono<Void> createMarketplaceCustomer(
-            UserServiceClient.RegisteredUser user, BusinessResponse business, StoreResponse store, RegistrationRequest request) {
+            Long userId, Long businessId, Long storeId, RegistrationRequest request) {
         return customerClient.post()
                 .uri("/customer")
                 .bodyValue(new MarketplaceCustomerCommand(
-                        user.id(), business.id(), store.id(), request.fullName(), request.phone(), request.email()))
+                        userId, businessId, storeId, request.fullName(), request.phone(), request.email()))
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<Object>>() {})
                 .then();
+    }
+
+    /** Removes what a failed registration created, newest first; each removal runs even if an earlier one fails. */
+    private Mono<Void> undoRegistration(String username, CreatedRecords created) {
+        List<Mono<Void>> removals = new ArrayList<>();
+        if (created.storeId != null) {
+            removals.add(undoStep("marketplace customer", customerClient.delete()
+                    .uri("/customer?userId={userId}&businessId={businessId}", created.userId, created.businessId)
+                    .retrieve()
+                    .toBodilessEntity()));
+            removals.add(undoStep("store", storeClient.delete()
+                    .uri("/{id}/registration-failure", created.storeId)
+                    .retrieve()
+                    .toBodilessEntity()));
+        }
+        if (created.businessId != null) {
+            removals.add(undoStep("business", businessClient.delete()
+                    .uri("/{id}/registration-failure", created.businessId)
+                    .retrieve()
+                    .toBodilessEntity()));
+        }
+        if (created.userId != null) {
+            removals.add(undoStep("account", userServiceClient.deleteFailedRegistration(username, created.businessId)));
+        }
+        return Flux.concat(removals).then();
+    }
+
+    private Mono<Void> undoStep(String record, Mono<?> removal) {
+        return removal.then()
+                .doOnSuccess(ignored -> log.info("Removed the {} of a failed registration", record))
+                .onErrorResume(error -> {
+                    log.warn("Could not remove the {} of a failed registration: {}", record, error.getMessage());
+                    return Mono.empty();
+                });
     }
 
     private Mono<BusinessResponse> createBusiness(Long userId, RegistrationRequest request) {
@@ -126,6 +180,13 @@ public class AuthenticationService {
 
     private record MarketplaceCustomerCommand(
             Long userId, Long businessId, Long storeId, String fullName, String phone, String email) {
+    }
+
+    /** What a registration has created so far, so a later failure can remove it again. */
+    private static final class CreatedRecords {
+        private Long userId;
+        private Long businessId;
+        private Long storeId;
     }
 
     private Mono<UserCredentialsResponse> findUser(String username) {
