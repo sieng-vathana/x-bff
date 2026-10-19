@@ -280,8 +280,8 @@ public class BusinessController {
                 "Application needs changes",
                 "Thank you for applying to sell on TinhLuk. We could not approve " + business.name() + " yet.\n\n"
                         + "Reason: " + reason + "\n\n"
-                        + "Sign in at " + portalUrl + "/sign-in to update your details, then submit the application again. "
-                        + "We will review it as soon as you resubmit.");
+                        + "You cannot sign in to the merchant portal while the application is not approved. "
+                        + "Reply to this email or contact TinhLuk support to fix the details and have it reviewed again.");
     }
 
     private Mono<String> shopNames(Long businessId) {

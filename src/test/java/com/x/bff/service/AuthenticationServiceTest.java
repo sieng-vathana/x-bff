@@ -382,6 +382,23 @@ class AuthenticationServiceTest {
     }
 
     @Test
+    void rejectedApplicantCannotSignIn() {
+        givenUserWithPassword("pass");
+        givenMfa(false, false);
+        givenWorkspace(",\"status\":-1,\"reviewReason\":\"Shop photos are missing\"", "");
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.authenticate(new AuthRequest("user", "pass"), ClientChannel.WEB))
+                .expectErrorSatisfies(error -> {
+                    var status = (org.springframework.web.server.ResponseStatusException) error;
+                    assertEquals(HttpStatus.FORBIDDEN, status.getStatusCode());
+                    org.junit.jupiter.api.Assertions.assertTrue(status.getReason().contains("was not approved by TinhLuk: Shop photos are missing."));
+                })
+                .verify();
+        verify(jwtUtils, never()).generateToken(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void takenUsernameRemovesNothing() {
         List<String> calls = new CopyOnWriteArrayList<>();
         givenWorkspaceServices(calls, request -> noContent(), request -> noContent(), request -> noContent());

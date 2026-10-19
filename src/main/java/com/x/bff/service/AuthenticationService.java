@@ -370,6 +370,11 @@ public class AuthenticationService {
                     "Your merchant application for " + business.name() + " is under review. "
                             + "We will email you as soon as TinhLuk approves it."));
         }
+        if (business.status() != null && business.status() == -1) {
+            return Mono.error(new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Your merchant application for " + business.name() + " was not approved by TinhLuk"
+                            + reasonSuffix(business.reviewReason()) + " Contact TinhLuk support for help."));
+        }
         if (business.suspended()) {
             return Mono.error(new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Your merchant account is suspended by TinhLuk" + reasonSuffix(business.suspensionReason())
