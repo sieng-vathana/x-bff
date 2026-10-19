@@ -31,6 +31,10 @@ class AuthenticationControllerTest {
     @Autowired
     private WebTestClient webTestClient;
 
+    /** The plan filter is a WebFilter, so the web slice creates it; these tests do not reach a gated path. */
+    @MockBean
+    private com.x.bff.plan.PlanService planService;
+
     @MockBean
     private AuthenticationService authenticationService;
 

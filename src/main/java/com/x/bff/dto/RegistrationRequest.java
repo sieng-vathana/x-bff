@@ -32,5 +32,8 @@ public record RegistrationRequest(
         BigDecimal storeLatitude,
         BigDecimal storeLongitude,
         @jakarta.validation.constraints.Positive(message = "USD to KHR exchange rate must be positive")
-        BigDecimal usdToKhrExchangeRate) {
+        BigDecimal usdToKhrExchangeRate,
+        /** STARTER, BUSINESS or PRO; the merchant chooses it on the sign-up form. */
+        @Pattern(regexp = "(?i)STARTER|BUSINESS|PRO") String plan,
+        @Pattern(regexp = "(?i)MONTHLY|YEARLY") String billingCycle) {
 }

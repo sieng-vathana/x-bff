@@ -101,6 +101,40 @@ public class SuspensionController {
                         }));
     }
 
+/** Changes a merchant's plan right away and tells the owner by email. */
+    @org.springframework.web.bind.annotation.PutMapping("/merchants/{id}/plan")
+    public Mono<ResponseEntity<?>> changePlan(@PathVariable Long id, @Valid @RequestBody ChangePlanRequest request) {
+        Map<String, String> body = new java.util.HashMap<>(Map.of("plan", request.plan().toUpperCase()));
+        if (request.billingCycle() != null) body.put("billingCycle", request.billingCycle().toUpperCase());
+        return businessClient.put().uri("/{id}/plan", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .exchangeToMono(response -> response.bodyToMono(String.class).defaultIfEmpty("")
+                        .flatMap(text -> {
+                            ResponseEntity<?> result = XUtil.toJsonResponse(text, response.statusCode());
+                            if (!response.statusCode().is2xxSuccessful()) return Mono.just(result);
+                            return business(id).flatMap(business -> {
+                                String plan = request.plan().substring(0, 1).toUpperCase() + request.plan().substring(1).toLowerCase();
+                                long ownerId = business.path("ownerUserId").asLong(0);
+                                if (ownerId <= 0) return Mono.empty();
+                                return userNoticeClient.post().uri("/{id}/notices", ownerId)
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .bodyValue(Map.of("subject", "Your TinhLuk plan is now " + plan,
+                                                "title", "Plan changed to " + plan,
+                                                "message", name(business) + " is now on the TinhLuk " + plan + " plan. "
+                                                        + "The features and limits of the new plan apply right away. "
+                                                        + "Sign in again to see every feature in the menu."))
+                                        .retrieve().toBodilessEntity().then()
+                                        .onErrorResume(error -> Mono.empty());
+                            }).thenReturn(result);
+                        }));
+    }
+
+    public record ChangePlanRequest(
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Pattern(regexp = "(?i)STARTER|BUSINESS|PRO") String plan,
+            @jakarta.validation.constraints.Pattern(regexp = "(?i)MONTHLY|YEARLY") String billingCycle) {
+    }
+
     @GetMapping("/stores")
     public Mono<ResponseEntity<?>> stores(@RequestParam(required = false) Long businessId,
                                           @RequestParam(required = false) String status,

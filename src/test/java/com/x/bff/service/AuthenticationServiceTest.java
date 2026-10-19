@@ -193,7 +193,7 @@ class AuthenticationServiceTest {
                 .verify();
 
         givenUserWithPassword("pass");
-        when(jwtUtils.generateToken(any(), any(), any(), any())).thenReturn("access");
+        when(jwtUtils.generateToken(any(), any(), any(), any(), any())).thenReturn("access");
         when(jwtUtils.generateRefreshToken(any(), any())).thenReturn("refresh");
         StepVerifier.create(service.authenticate(new AuthRequest("user", "pass"), ClientChannel.WEB))
                 .expectNextMatches(response -> response.getData().getUser() != null)
@@ -213,7 +213,7 @@ class AuthenticationServiceTest {
         var credentials = credentials(hashed, Set.of("x-product:read"), Set.of(21L));
         when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(credentials));
         when(userServiceClient.findByUsername("user", 12L)).thenReturn(Mono.just(credentials));
-        when(jwtUtils.generateToken(eq("user"), eq(Set.of("x-product:read")), eq("mobile"), eq(1L)))
+        when(jwtUtils.generateToken(eq("user"), eq(Set.of("x-product:read")), eq("mobile"), eq(1L), eq(12L)))
                 .thenReturn("access");
         when(jwtUtils.generateRefreshToken(eq("user"), eq("mobile"))).thenReturn("refresh");
         when(jwtUtils.getAccessExpirationSeconds()).thenReturn(900L);
@@ -276,7 +276,7 @@ class AuthenticationServiceTest {
         var credentials = credentials(hashed, Set.of("x-product:read"), Set.of(21L));
         when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(credentials));
         when(userServiceClient.findByUsername("user", 12L)).thenReturn(Mono.just(credentials));
-        when(jwtUtils.generateToken(any(), any(), any(), anyLong())).thenReturn("access2");
+        when(jwtUtils.generateToken(any(), any(), any(), anyLong(), any())).thenReturn("access2");
         when(jwtUtils.generateRefreshToken(any(), any())).thenReturn("refresh2");
         when(jwtUtils.getAccessExpirationSeconds()).thenReturn(900L);
 
@@ -453,7 +453,7 @@ class AuthenticationServiceTest {
         return new RegistrationRequest(
                 "Shop Owner", "owner", "password123", "owner@example.com", "012345678",
                 "Demo Business", "DEMO", "USD", null, null, true, "Asia/Phnom_Penh", 1,
-                "Main Store", "MAIN", "Street 1", "Phnom Penh", "KH", null, null, null);
+                "Main Store", "MAIN", "Street 1", "Phnom Penh", "KH", null, null, null, "BUSINESS", "MONTHLY");
     }
 
     private static WebClient businessClient() {

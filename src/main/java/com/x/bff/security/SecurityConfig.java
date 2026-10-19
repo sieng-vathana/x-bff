@@ -47,6 +47,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/logout",
                                 "/api/v1/marketplace/home",
+                                "/api/v1/plans",
                                 "/api/v1/payments/khqrpay/webhook")
                         .permitAll()
                         .anyExchange().authenticated()

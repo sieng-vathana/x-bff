@@ -285,7 +285,8 @@ public class AuthenticationService {
                 .bodyValue(new CreateBusinessCommand(
                         userId, request.businessName(), request.businessCode(), request.defaultCurrencyCode(),
                         request.taxRegistrationNumber(), request.taxRegistrationLabel(), request.pricesIncludeTax(),
-                        request.timeZone(), request.fiscalYearStartMonth(), request.usdToKhrExchangeRate()))
+                        request.timeZone(), request.fiscalYearStartMonth(), request.usdToKhrExchangeRate(),
+                        request.plan(), request.billingCycle()))
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
                 .map(ApiResponse::getData);
@@ -305,7 +306,8 @@ public class AuthenticationService {
     private record CreateBusinessCommand(
             Long ownerUserId, String name, String code, String defaultCurrencyCode,
             String taxRegistrationNumber, String taxRegistrationLabel, Boolean pricesIncludeTax,
-            String timeZone, Integer fiscalYearStartMonth, java.math.BigDecimal usdToKhrExchangeRate) {
+            String timeZone, Integer fiscalYearStartMonth, java.math.BigDecimal usdToKhrExchangeRate,
+            String plan, String billingCycle) {
     }
 
     private record MarketplaceCustomerCommand(
@@ -452,7 +454,7 @@ public class AuthenticationService {
         String channelValue = channel.wireValue();
         AuthResponse response = AuthResponse.builder()
                 .accessToken(jwtUtils.generateToken(
-                        user.getUsername(), permissions, channelValue, user.getId()))
+                        user.getUsername(), permissions, channelValue, user.getId(), business == null ? null : business.id()))
                 .refreshToken(jwtUtils.generateRefreshToken(user.getUsername(), channelValue))
                 .expiresIn(jwtUtils.getAccessExpirationSeconds())
                 .tokenType("Bearer")

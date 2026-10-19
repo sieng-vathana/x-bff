@@ -169,7 +169,7 @@ public class MarketplaceController {
                 .defaultIfEmpty(List.of());
     }
 
-    /** Shops of a merchant the platform has suspended are not shown, so their products drop out too. */
+    /** Shops of a suspended merchant, or of a merchant without the marketplace in its plan, are not shown. */
     private Mono<List<MarketplaceStoreResponse>> withoutSuspendedMerchants(List<MarketplaceStoreResponse> stores) {
         List<Long> businessIds = stores.stream().map(MarketplaceStoreResponse::businessId)
                 .filter(java.util.Objects::nonNull).distinct().toList();
@@ -180,7 +180,9 @@ public class MarketplaceController {
                         .mapNotNull(ApiResponse::getData)
                         // A merchant that cannot be looked up is kept, so a business-service hiccup does not empty the marketplace.
                         .onErrorResume(error -> Mono.empty()))
-                .filter(com.x.bff.dto.BusinessResponse::suspended)
+                // Hidden: suspended merchants, and merchants whose plan does not include the marketplace (Pro only).
+                .filter(business -> business.suspended()
+                        || (business.plan() != null && !"PRO".equalsIgnoreCase(business.plan())))
                 .map(com.x.bff.dto.BusinessResponse::id)
                 .collect(java.util.stream.Collectors.toSet())
                 .map(suspended -> stores.stream()

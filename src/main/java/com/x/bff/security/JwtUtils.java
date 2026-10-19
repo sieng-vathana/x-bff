@@ -27,6 +27,7 @@ public class JwtUtils {
     private static final String TOKEN_TYPE_CLAIM = "tokenType";
     private static final String CHANNEL_CLAIM = "ch";
     private static final String USER_ID_CLAIM = "uid";
+    private static final String BUSINESS_ID_CLAIM = "bid";
     private static final String ACCESS_TOKEN_TYPE = "access";
     private static final String REFRESH_TOKEN_TYPE = "refresh";
     private static final String MFA_SELECTION_TOKEN_TYPE = "mfa-select";
@@ -54,6 +55,16 @@ public class JwtUtils {
             Set<String> permissions,
             String channel,
             Long userId) {
+        return generateToken(username, permissions, channel, userId, null);
+    }
+
+    /** businessId is the merchant the session works for; the plan check reads it without a lookup. */
+    public String generateToken(
+            String username,
+            Set<String> permissions,
+            String channel,
+            Long userId,
+            Long businessId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put(PERMISSIONS_CLAIM, permissions == null ? Collections.emptySet() : permissions);
         claims.put(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE);
@@ -62,6 +73,9 @@ public class JwtUtils {
         }
         if (userId != null) {
             claims.put(USER_ID_CLAIM, userId);
+        }
+        if (businessId != null) {
+            claims.put(BUSINESS_ID_CLAIM, businessId);
         }
         return createToken(claims, username, expiration);
     }
@@ -117,6 +131,16 @@ public class JwtUtils {
                     && !isTokenExpired(token);
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    /** The merchant of an access token, or null for tokens issued before it was added. */
+    public Long extractBusinessId(String token) {
+        try {
+            Object value = extractClaim(token, claims -> claims.get(BUSINESS_ID_CLAIM));
+            return value instanceof Number number ? number.longValue() : null;
+        } catch (Exception exception) {
+            return null;
         }
     }
 
