@@ -154,6 +154,35 @@ public class BusinessController {
                 .then(forward(businessClient.post().uri("/{id}/telegram/test", id)));
     }
 
+    /** Which stores and alerts one connected chat gets. */
+    @PutMapping("/{id}/telegram/chats/{chatId}")
+    @PreAuthorize("hasAuthority('x-business:update')")
+    public Mono<ResponseEntity<?>> updateTelegramChat(
+            @PathVariable Long id,
+            @PathVariable Long chatId,
+            @Valid @RequestBody TelegramChatRequest request,
+            Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.put()
+                        .uri("/{id}/telegram/chats/{chatId}", id, chatId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .bodyValue(request)));
+    }
+
+    @DeleteMapping("/{id}/telegram/chats/{chatId}")
+    @PreAuthorize("hasAuthority('x-business:update')")
+    public Mono<ResponseEntity<?>> disconnectTelegramChat(@PathVariable Long id, @PathVariable Long chatId, Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.delete().uri("/{id}/telegram/chats/{chatId}", id, chatId)));
+    }
+
+    @PostMapping("/{id}/telegram/chats/{chatId}/test")
+    @PreAuthorize("hasAuthority('x-business:update')")
+    public Mono<ResponseEntity<?>> sendTelegramChatTest(@PathVariable Long id, @PathVariable Long chatId, Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.post().uri("/{id}/telegram/chats/{chatId}/test", id, chatId)));
+    }
+
     private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
@@ -203,12 +232,17 @@ public class BusinessController {
     }
 
     private record TelegramAlertsRequest(
+            @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(100000) Integer lowStockThreshold,
+            @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(23) Integer dailySummaryHour) {
+    }
+
+    private record TelegramChatRequest(
+            Boolean allStores,
+            @jakarta.validation.constraints.Size(max = 200) java.util.List<@jakarta.validation.constraints.Positive Long> storeIds,
             Boolean khqrAlerts,
             Boolean orderAlerts,
             Boolean lowStockAlerts,
-            Boolean dailySummary,
-            @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(100000) Integer lowStockThreshold,
-            @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(23) Integer dailySummaryHour) {
+            Boolean dailySummary) {
     }
 
     private record CreateBusinessCommand(
