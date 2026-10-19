@@ -2,6 +2,7 @@ package com.x.bff.controller;
 
 import com.x.bff.service.ServiceClientFactory;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.time.Duration;
 
 /**
  * Proxies file APIs to x-storage-service.
@@ -76,20 +79,23 @@ public class FileController {
     @GetMapping("/{id}/content")
     @PreAuthorize("hasAuthority('x-storage:read')")
     public Mono<ResponseEntity<Flux<DataBuffer>>> content(@PathVariable Long id) {
+        // toEntityFlux keeps the storage response open until its bytes are written. Reading the body
+        // inside exchangeToMono did not: the response was released first and images arrived empty.
         return storageClient.get()
                 .uri("/{id}/content", id)
-                .exchangeToMono(response -> {
+                .retrieve()
+                .toEntityFlux(DataBuffer.class)
+                .map(response -> {
+                    HttpHeaders upstream = response.getHeaders();
                     HttpHeaders headers = new HttpHeaders();
-                    MediaType ct = response.headers().contentType().orElse(MediaType.APPLICATION_OCTET_STREAM);
-                    headers.setContentType(ct);
-                    response.headers().asHttpHeaders().getOrEmpty(HttpHeaders.CONTENT_DISPOSITION)
-                            .forEach(v -> headers.add(HttpHeaders.CONTENT_DISPOSITION, v));
-                    if (response.statusCode().isError()) {
-                        return response.createException().flatMap(Mono::error);
+                    headers.setContentType(upstream.getContentType() != null ? upstream.getContentType() : MediaType.APPLICATION_OCTET_STREAM);
+                    if (upstream.getContentLength() >= 0) {
+                        headers.setContentLength(upstream.getContentLength());
                     }
-                    return Mono.just(ResponseEntity.status(response.statusCode())
-                            .headers(headers)
-                            .body(response.bodyToFlux(DataBuffer.class)));
+                    upstream.getOrEmpty(HttpHeaders.CONTENT_DISPOSITION).forEach(v -> headers.add(HttpHeaders.CONTENT_DISPOSITION, v));
+                    // A file id always has the same bytes, so the browser may keep it for a day.
+                    headers.setCacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePrivate());
+                    return ResponseEntity.status(response.getStatusCode()).headers(headers).body(response.getBody());
                 });
     }
 
