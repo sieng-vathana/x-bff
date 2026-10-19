@@ -172,6 +172,21 @@ public class UserServiceClient {
                 .then();
     }
 
+    /**
+     * Emails the user a TinhLuk notice (application received, approved, suspended...). Best effort: a mail problem
+     * is logged by the user service and never fails the caller.
+     */
+    public Mono<Void> sendNotice(Long userId, String subject, String title, String message) {
+        if (userId == null) return Mono.empty();
+        return userClient.post()
+                .uri("/{userId}/notices", userId)
+                .bodyValue(java.util.Map.of("subject", subject, "title", title, "message", message))
+                .retrieve()
+                .toBodilessEntity()
+                .then()
+                .onErrorResume(error -> Mono.empty());
+    }
+
     private record UserRegistrationCommand(String fullName, String username, String password, String email, String phone) {
     }
 

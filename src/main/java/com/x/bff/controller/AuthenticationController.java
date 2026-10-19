@@ -180,6 +180,7 @@ public class AuthenticationController {
                 .mfaDestination(data.getMfaDestination())
                 .mfaMethods(data.getMfaMethods())
                 .mfaSelectionToken(data.getMfaSelectionToken())
+                .applicationStatus(data.getApplicationStatus())
                 .build();
 
         return ResponseEntity.ok(ApiResponse.success(response.getCode(), webSafe));

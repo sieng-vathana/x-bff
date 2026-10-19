@@ -1,6 +1,8 @@
 package com.x.bff.controller;
 
 import com.x.bff.dto.BusinessResponse;
+import com.sharedlib.response.PageResponse;
+import com.x.bff.dto.StoreResponse;
 import com.x.bff.dto.CreateBusinessRequest;
 import com.x.bff.dto.UserCredentialsResponse;
 import com.x.bff.service.ServiceClientFactory;
@@ -36,9 +38,16 @@ public class BusinessController {
 
     private final WebClient businessClient;
     private final UserServiceClient userServiceClient;
+    private final WebClient storeClient;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper()
+            .findAndRegisterModules()
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    @org.springframework.beans.factory.annotation.Value("${app.portal-url:https://portal.learner-teach.online}")
+    private String portalUrl;
 
     public BusinessController(ServiceClientFactory clientFactory, UserServiceClient userServiceClient) {
         this.businessClient = clientFactory.forService("business", "/api/v1/businesses");
+        this.storeClient = clientFactory.forService("store", "/api/v1/stores");
         this.userServiceClient = userServiceClient;
     }
 
@@ -136,19 +145,19 @@ public class BusinessController {
     @PostMapping("/{id}/approval/approve")
     @PreAuthorize("hasAuthority('platform:admin')")
     public Mono<ResponseEntity<?>> approve(@PathVariable Long id, Authentication authentication) {
-        return currentUser(authentication).flatMap(user -> forward(businessClient.post()
+        return currentUser(authentication).flatMap(user -> forwardThen(businessClient.post()
                 .uri(uri -> uri.path("/{id}/approval/approve")
-                        .queryParam("reviewerUserId", user.getId()).build(id))));
+                        .queryParam("reviewerUserId", user.getId()).build(id)), business -> tellApproved(business)));
     }
 
     @PostMapping("/{id}/approval/reject")
     @PreAuthorize("hasAuthority('platform:admin')")
     public Mono<ResponseEntity<?>> reject(@PathVariable Long id,
             @Valid @RequestBody ReviewBusinessRequest request, Authentication authentication) {
-        return currentUser(authentication).flatMap(user -> forward(businessClient.post()
+        return currentUser(authentication).flatMap(user -> forwardThen(businessClient.post()
                 .uri(uri -> uri.path("/{id}/approval/reject")
                         .queryParam("reviewerUserId", user.getId()).build(id))
-                .bodyValue(request)));
+                .bodyValue(request), business -> tellNeedsChanges(business, request.reason())));
     }
 
     @PostMapping("/{id}/approval/resubmit")
@@ -229,7 +238,64 @@ public class BusinessController {
                 .then(forward(businessClient.post().uri("/{id}/telegram/chats/{chatId}/test", id, chatId)));
     }
 
-    private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
+/**
+     * Forwards the call and, when it succeeds, runs then with the business it returned. The notice is best effort and
+     * never changes the answer the backoffice gets.
+     */
+    private Mono<ResponseEntity<?>> forwardThen(WebClient.RequestHeadersSpec<?> request,
+                                                java.util.function.Function<BusinessResponse, Mono<Void>> then) {
+        return request.exchangeToMono(response -> response.bodyToMono(String.class).defaultIfEmpty("")
+                .flatMap(body -> {
+                    ResponseEntity<?> result = XUtil.toJsonResponse(body, response.statusCode());
+                    if (!response.statusCode().is2xxSuccessful()) return Mono.just(result);
+                    BusinessResponse business;
+                    try {
+                        business = objectMapper.readValue(body,
+                                new com.fasterxml.jackson.core.type.TypeReference<ApiResponse<BusinessResponse>>() {}).getData();
+                    } catch (Exception exception) {
+                        return Mono.just(result);
+                    }
+                    return business == null ? Mono.just(result)
+                            : then.apply(business).onErrorResume(error -> Mono.empty()).thenReturn(result);
+                }));
+    }
+
+    /** Emails the owner that the merchant and its shops are live on TinhLuk, with where to sign in. */
+    private Mono<Void> tellApproved(BusinessResponse business) {
+        return shopNames(business.id()).flatMap(shops -> userServiceClient.sendNotice(business.ownerUserId(),
+                "Your shop has been approved on TinhLuk",
+                "Welcome to TinhLuk",
+                "Good news! Your merchant application for " + business.name() + " has been approved, and "
+                        + (shops.isEmpty() ? "your shop is" : shops + (shops.contains(", ") ? " are" : " is"))
+                        + " now live on the TinhLuk platform.\n\n"
+                        + "Sign in to the merchant portal with the username and password you registered: "
+                        + portalUrl + "/sign-in\n\n"
+                        + "From there you can add products, start selling at the POS with KHQR payments, and connect "
+                        + "Telegram for sales alerts."));
+    }
+
+    private Mono<Void> tellNeedsChanges(BusinessResponse business, String reason) {
+        return userServiceClient.sendNotice(business.ownerUserId(),
+                "Your merchant application needs changes",
+                "Application needs changes",
+                "Thank you for applying to sell on TinhLuk. We could not approve " + business.name() + " yet.\n\n"
+                        + "Reason: " + reason + "\n\n"
+                        + "Sign in at " + portalUrl + "/sign-in to update your details, then submit the application again. "
+                        + "We will review it as soon as you resubmit.");
+    }
+
+    private Mono<String> shopNames(Long businessId) {
+        return storeClient.get()
+                .uri(uri -> uri.queryParam("businessId", businessId).queryParam("page", 0).queryParam("size", 20).build())
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<PageResponse<StoreResponse>>>() {})
+                .map(page -> page.getData() == null || page.getData().content() == null ? ""
+                        : String.join(", ", page.getData().content().stream().map(StoreResponse::name).toList()))
+                .onErrorReturn("")
+                .defaultIfEmpty("");
+    }
+
+        private Mono<ResponseEntity<?>> forward(WebClient.RequestHeadersSpec<?> request) {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
                 .map(body -> XUtil.toJsonResponse(body, response.statusCode())));

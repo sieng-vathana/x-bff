@@ -43,4 +43,6 @@ public class AuthResponse {
     private List<String> mfaMethods;
     /** Short-lived proof that the password was accepted, used to send a code to a chosen method. */
     private String mfaSelectionToken;
+    /** PENDING_REVIEW after registering: the application waits for TinhLuk approval and no session is issued. */
+    private String applicationStatus;
 }

@@ -341,6 +341,47 @@ class AuthenticationServiceTest {
     }
 
     @Test
+    void registrationSubmitsAnApplicationWithoutASession() {
+        List<String> calls = new CopyOnWriteArrayList<>();
+        givenWorkspaceServices(
+                calls,
+                request -> isPost(request) ? created(NEW_BUSINESS) : noContent(),
+                request -> isPost(request) ? created(NEW_STORE) : noContent(),
+                request -> created("{}"));
+        when(userServiceClient.register(any(), any(), any(), any(), any()))
+                .thenReturn(Mono.just(new UserServiceClient.RegisteredUser(1L)));
+        when(userServiceClient.ensureOwnerBusinessAccess(anyLong(), anyLong(), any())).thenReturn(Mono.empty());
+        when(userServiceClient.sendNotice(eq(1L), any(), any(), any())).thenReturn(Mono.empty());
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.register(registration(), ClientChannel.WEB))
+                .expectNextMatches(response -> response.getCode() == 202
+                        && "PENDING_REVIEW".equals(response.getData().getApplicationStatus())
+                        && response.getData().getAccessToken() == null
+                        && response.getData().getUser() == null
+                        && "Main Store".equals(response.getData().getStores().get(0).name()))
+                .verifyComplete();
+        verify(userServiceClient).sendNotice(eq(1L), eq("We received your merchant application"), any(), any());
+        verify(jwtUtils, never()).generateToken(any(), any(), any(), any());
+    }
+
+    @Test
+    void pendingApplicantCannotSignInYet() {
+        givenUserWithPassword("pass");
+        givenMfa(false, false);
+        givenWorkspace(",\"status\":0", "");
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.authenticate(new AuthRequest("user", "pass"), ClientChannel.WEB))
+                .expectErrorSatisfies(error -> {
+                    var status = (org.springframework.web.server.ResponseStatusException) error;
+                    assertEquals(HttpStatus.FORBIDDEN, status.getStatusCode());
+                    org.junit.jupiter.api.Assertions.assertTrue(status.getReason().contains("is under review"));
+                })
+                .verify();
+    }
+
+    @Test
     void takenUsernameRemovesNothing() {
         List<String> calls = new CopyOnWriteArrayList<>();
         givenWorkspaceServices(calls, request -> noContent(), request -> noContent(), request -> noContent());

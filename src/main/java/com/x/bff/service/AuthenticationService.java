@@ -199,6 +199,7 @@ public class AuthenticationService {
                     .doOnNext(user -> created.userId = user.id())
                     .flatMap(user -> createBusiness(user.id(), request))
                     .doOnNext(business -> created.businessId = business.id())
+                    .doOnNext(business -> created.business = business)
                     .flatMap(business -> createStore(business.id(), request))
                     .doOnNext(store -> created.storeId = store.id())
                     .flatMap(store -> createMarketplaceCustomer(created.userId, created.businessId, store.id(), request)
@@ -207,8 +208,31 @@ public class AuthenticationService {
                             .thenReturn(store))
                     .switchIfEmpty(Mono.error(() -> new IllegalStateException("Registration did not complete")))
                     .onErrorResume(error -> undoRegistration(request.username(), created).then(Mono.error(error)))
-                    .flatMap(store -> authenticate(new AuthRequest(request.username(), request.password()), channel));
+                    .flatMap(store -> applicationReceived(created, request, store, channel));
         });
+    }
+
+    /**
+     * A new merchant does not get a session: the business waits for TinhLuk approval. The owner is emailed that the
+     * application arrived, and again when it is approved or needs changes.
+     */
+    private Mono<ApiResponse<AuthResponse>> applicationReceived(
+            CreatedRecords created, RegistrationRequest request, StoreResponse store, ClientChannel channel) {
+        String businessName = created.business == null ? request.businessName() : created.business.name();
+        return userServiceClient.sendNotice(created.userId,
+                        "We received your merchant application",
+                        "Application received",
+                        "Thank you for applying to sell on TinhLuk.\n\n"
+                                + "Business: " + businessName + "\nShop: " + store.name() + "\n\n"
+                                + "Our team is reviewing your application. We will email you as soon as it is approved, "
+                                + "usually within one business day. You can sign in to the merchant portal once it is approved.")
+                .thenReturn(ApiResponse.success(HttpStatus.ACCEPTED.value(), "Application submitted for review",
+                        AuthResponse.builder()
+                                .applicationStatus("PENDING_REVIEW")
+                                .business(created.business)
+                                .stores(List.of(store))
+                                .channel(channel.wireValue())
+                                .build()));
     }
 
     private Mono<Void> createMarketplaceCustomer(
@@ -293,6 +317,7 @@ public class AuthenticationService {
         private Long userId;
         private Long businessId;
         private Long storeId;
+        private BusinessResponse business;
     }
 
     private Mono<UserCredentialsResponse> findUser(String username) {
@@ -338,6 +363,11 @@ public class AuthenticationService {
      * still can, to see which store is suspended and why.
      */
     private Mono<Void> refuseSuspended(UserCredentialsResponse user, BusinessResponse business, List<StoreResponse> stores) {
+        if (business.status() != null && business.status() == 0) {
+            return Mono.error(new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Your merchant application for " + business.name() + " is under review. "
+                            + "We will email you as soon as TinhLuk approves it."));
+        }
         if (business.suspended()) {
             return Mono.error(new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Your merchant account is suspended by TinhLuk" + reasonSuffix(business.suspensionReason())
