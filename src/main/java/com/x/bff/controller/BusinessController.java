@@ -100,6 +100,20 @@ public class BusinessController {
                 .map(business -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), business)));
     }
 
+    @GetMapping("/{id}/exchange-rate-reference")
+    @PreAuthorize("hasAuthority('x-business:read')")
+    public Mono<ResponseEntity<?>> exchangeRateReference(@PathVariable Long id, Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.get().uri("/{id}/exchange-rate-reference", id)));
+    }
+
+    @PostMapping("/{id}/exchange-rate-reference/refresh")
+    @PreAuthorize("hasAuthority('x-business:read')")
+    public Mono<ResponseEntity<?>> refreshExchangeRateReference(@PathVariable Long id, Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.post().uri("/{id}/exchange-rate-reference/refresh", id)));
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('x-business:read')")
     public Mono<ResponseEntity<ApiResponse<java.util.List<BusinessResponse>>>> getMine(Authentication authentication) {
