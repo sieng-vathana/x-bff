@@ -141,13 +141,33 @@ public class OrderController {
     @PreAuthorize("hasAuthority('x-report:read')")
     public Mono<ResponseEntity<?>> salesTrend(
             @RequestParam Long storeId, @RequestParam String currencyCode,
-            @RequestParam String from, @RequestParam String to) {
+            @RequestParam String from, @RequestParam String to,
+            @RequestParam(required = false) String timeZone) {
         return forward(orderClient.get()
                 .uri(uri -> uri.path("/reports/sales-trend")
                         .queryParam("storeId", storeId)
                         .queryParam("currencyCode", currencyCode)
                         .queryParam("from", from)
                         .queryParam("to", to)
+                        .queryParamIfPresent("timeZone", java.util.Optional.ofNullable(timeZone))
+                        .build()));
+    }
+
+    @GetMapping("/reports/sales-breakdown")
+    @PreAuthorize("hasAuthority('x-report:read')")
+    public Mono<ResponseEntity<?>> salesBreakdown(
+            @RequestParam Long storeId, @RequestParam String currencyCode,
+            @RequestParam String from, @RequestParam String to,
+            @RequestParam(defaultValue = "DAY") String bucket,
+            @RequestParam(required = false) String timeZone) {
+        return forward(orderClient.get()
+                .uri(uri -> uri.path("/reports/sales-breakdown")
+                        .queryParam("storeId", storeId)
+                        .queryParam("currencyCode", currencyCode)
+                        .queryParam("from", from)
+                        .queryParam("to", to)
+                        .queryParam("bucket", bucket)
+                        .queryParamIfPresent("timeZone", java.util.Optional.ofNullable(timeZone))
                         .build()));
     }
 

@@ -159,6 +159,24 @@ public class PaymentController {
                         .build()));
     }
 
+    @GetMapping("/reports/periods")
+    @PreAuthorize("hasAuthority('x-report:read')")
+    public Mono<ResponseEntity<?>> periods(
+            @RequestParam Long storeId, @RequestParam String currencyCode,
+            @RequestParam String from, @RequestParam String to,
+            @RequestParam(defaultValue = "DAY") String bucket,
+            @RequestParam(required = false) String timeZone) {
+        return forward(paymentClient.get()
+                .uri(uri -> uri.path("/reports/periods")
+                        .queryParam("storeId", storeId)
+                        .queryParam("currencyCode", currencyCode)
+                        .queryParam("from", from)
+                        .queryParam("to", to)
+                        .queryParam("bucket", bucket)
+                        .queryParamIfPresent("timeZone", java.util.Optional.ofNullable(timeZone))
+                        .build()));
+    }
+
     @PostMapping("/{id}/refund")
     @PreAuthorize("hasAuthority('x-payment:refund') or hasAuthority('x-order:refund')")
     public Mono<ResponseEntity<?>> refund(@PathVariable Long id, @RequestBody JsonNode request) {

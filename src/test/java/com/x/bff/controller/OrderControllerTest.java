@@ -112,11 +112,25 @@ class OrderControllerTest {
                 """);
         OrderController controller = controller(orderExchange, new CapturedExchange(HttpStatus.OK, ""));
 
-        controller.salesTrend(4L, "USD", "2026-08-15T00:00:00", "2026-08-22T00:00:00").block();
+        controller.salesTrend(4L, "USD", "2026-08-15T00:00:00", "2026-08-22T00:00:00", "Asia/Phnom_Penh").block();
 
         assertThat(orderExchange.request().url().getPath()).isEqualTo("/api/v1/orders/reports/sales-trend");
         assertThat(orderExchange.request().url().getQuery())
-                .contains("storeId=4", "from=2026-08-15T00:00:00", "to=2026-08-22T00:00:00");
+                .contains("storeId=4", "from=2026-08-15T00:00:00", "to=2026-08-22T00:00:00", "timeZone=Asia/Phnom_Penh");
+    }
+
+    @Test
+    void salesBreakdownForwardsBucketAndTimeZone() {
+        CapturedExchange orderExchange = new CapturedExchange(HttpStatus.OK, """
+                {"status":1,"code":200,"data":[]}
+                """);
+        OrderController controller = controller(orderExchange, new CapturedExchange(HttpStatus.OK, ""));
+
+        controller.salesBreakdown(4L, "USD", "2025-12-31T17:00:00", "2026-12-31T17:00:00", "MONTH", "Asia/Phnom_Penh").block();
+
+        assertThat(orderExchange.request().url().getPath()).isEqualTo("/api/v1/orders/reports/sales-breakdown");
+        assertThat(orderExchange.request().url().getQuery())
+                .contains("storeId=4", "bucket=MONTH", "timeZone=Asia/Phnom_Penh", "from=2025-12-31T17:00:00");
     }
 
     @Test
