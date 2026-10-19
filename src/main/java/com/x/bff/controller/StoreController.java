@@ -208,12 +208,22 @@ public class StoreController {
     @PostMapping("/{id}/marketplace/approve")
     @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:manage')")
     public Mono<ResponseEntity<ApiResponse<StoreResponse>>> approveMarketplace(@PathVariable Long id) {
-        return storeClient.post()
+        return storeClient.get().uri("/{id}", id).retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
+                .map(ApiResponse::getData)
+                .flatMap(store -> findBusiness(store.businessId()))
+                .flatMap(business -> {
+                    if (business.status() == null || business.status() != 1) {
+                        return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                                HttpStatus.CONFLICT, "Approve the merchant before its store can go live"));
+                    }
+                    return storeClient.post()
                 .uri("/{id}/marketplace/approve", id)
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
                 .map(ApiResponse::getData)
-                .flatMap(storeImageUrlResolver::resolveResponse)
+                .flatMap(storeImageUrlResolver::resolveResponse);
+                })
                 .map(store -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Marketplace store approved", store)));
     }
 

@@ -175,7 +175,9 @@ public class MarketplaceController {
         Map<Long, MarketplaceStoreResponse> storesById = stores.stream()
                 .collect(Collectors.toMap(MarketplaceStoreResponse::id, Function.identity(), (left, right) -> left));
         PageResponse<MarketplaceProductView> productViews = new PageResponse<>(
-                products.content().stream().map(product -> new MarketplaceProductView(
+                products.content().stream()
+                        .filter(product -> storesById.containsKey(product.storeId()))
+                        .map(product -> new MarketplaceProductView(
                         product.productId(), product.productName(), product.shortName(), product.thumbnail(),
                         product.description(), product.categoryId(), product.categoryName(), product.currencyCode(),
                         product.onlinePrice(), product.compareAtPrice(), product.quantity(), product.featured(),

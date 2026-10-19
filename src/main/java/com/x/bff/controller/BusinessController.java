@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -126,6 +127,37 @@ public class BusinessController {
                 .map(businesses -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), businesses)));
     }
 
+    @GetMapping("/approvals/pending")
+    @PreAuthorize("hasAuthority('platform:admin')")
+    public Mono<ResponseEntity<?>> pendingApprovals() {
+        return forward(businessClient.get().uri("/approvals/pending"));
+    }
+
+    @PostMapping("/{id}/approval/approve")
+    @PreAuthorize("hasAuthority('platform:admin')")
+    public Mono<ResponseEntity<?>> approve(@PathVariable Long id, Authentication authentication) {
+        return currentUser(authentication).flatMap(user -> forward(businessClient.post()
+                .uri(uri -> uri.path("/{id}/approval/approve")
+                        .queryParam("reviewerUserId", user.getId()).build(id))));
+    }
+
+    @PostMapping("/{id}/approval/reject")
+    @PreAuthorize("hasAuthority('platform:admin')")
+    public Mono<ResponseEntity<?>> reject(@PathVariable Long id,
+            @Valid @RequestBody ReviewBusinessRequest request, Authentication authentication) {
+        return currentUser(authentication).flatMap(user -> forward(businessClient.post()
+                .uri(uri -> uri.path("/{id}/approval/reject")
+                        .queryParam("reviewerUserId", user.getId()).build(id))
+                .bodyValue(request)));
+    }
+
+    @PostMapping("/{id}/approval/resubmit")
+    @PreAuthorize("hasAuthority('x-business:update')")
+    public Mono<ResponseEntity<?>> resubmit(@PathVariable Long id, Authentication authentication) {
+        return requireBusinessAccess(id, authentication)
+                .then(forward(businessClient.post().uri("/{id}/approval/resubmit", id)));
+    }
+
     @GetMapping("/{id}/telegram")
     @PreAuthorize("hasAuthority('x-business:read')")
     public Mono<ResponseEntity<?>> telegramStatus(@PathVariable Long id, Authentication authentication) {
@@ -202,6 +234,10 @@ public class BusinessController {
                 .defaultIfEmpty("")
                 .map(body -> XUtil.toJsonResponse(body, response.statusCode())));
     }
+
+    private record ReviewBusinessRequest(
+            @jakarta.validation.constraints.NotBlank
+            @jakarta.validation.constraints.Size(max = 1000) String reason) {}
 
     private Mono<UserCredentialsResponse> currentUser(Authentication authentication) {
         return userServiceClient.findByUsername(authentication.getName());
