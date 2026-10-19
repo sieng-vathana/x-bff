@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.x.bff.dto.PosOrderItemRequest;
 import com.x.bff.dto.PosQrCheckoutRequest;
+import com.x.bff.dto.PosQrResumeRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
@@ -153,6 +154,58 @@ class PosQrCheckoutServiceTest {
                 .verify();
 
         assertThat(order.request()).isNull();
+        assertThat(payment.request()).isNull();
+    }
+
+    @Test
+    void continuesAnUnpaidOrderWithANewBakongKhqr() throws Exception {
+        CapturedJsonExchange order = new CapturedJsonExchange("""
+                {"status":1,"code":200,"data":{"id":44,"orderNo":"ORD-44","businessId":2,"storeId":2,
+                 "orderStatus":"PENDING_PAYMENT","grandTotal":3.00,"currencyCode":"USD"}}
+                """);
+        String qrImage = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
+        CapturedJsonExchange payment = new CapturedJsonExchange("""
+                {"status":1,"code":201,"data":{"transactionId":"md5-44b","qrImageUrl":"%s","provider":"BAKONG"}}
+                """.formatted(qrImage));
+        CapturedJsonExchange business = new CapturedJsonExchange("""
+                {"status":1,"code":200,"data":{"id":2,"name":"TinhLuk Coffee","bakongAccountId":"shop@aclb"}}
+                """);
+        PosQrCheckoutService service = new PosQrCheckoutService(
+                client(order), client(payment), WebClient.builder().build(), businessClient(business), OBJECT_MAPPER);
+
+        StepVerifier.create(service.resume(44L, new PosQrResumeRequest(2L, 2L, 6L, "PAY-again", "Latte x1"), true))
+                .assertNext(result -> {
+                    assertThat(result.order().path("orderNo").asText()).isEqualTo("ORD-44");
+                    assertThat(result.payment().path("qrImageDataUrl").asText()).isEqualTo(qrImage);
+                })
+                .verifyComplete();
+
+        assertThat(order.request().method()).isEqualTo(HttpMethod.GET);
+        assertThat(order.request().url().getPath()).isEqualTo("/api/v1/orders/44");
+        JsonNode body = OBJECT_MAPPER.readTree(bodyOf(payment.request()));
+        assertThat(payment.request().url().getPath()).isEqualTo("/api/v1/payments/bakong-qr");
+        assertThat(body.path("orderId").asLong()).isEqualTo(44L);
+        assertThat(body.path("amount").decimalValue()).isEqualByComparingTo("3.00");
+        assertThat(body.path("idempotencyKey").asText()).isEqualTo("PAY-again");
+        assertThat(body.path("bakongAccountId").asText()).isEqualTo("shop@aclb");
+    }
+
+    @Test
+    void refusesToContinueAnOrderThatIsPaidOrFromAnotherStore() {
+        CapturedJsonExchange completed = new CapturedJsonExchange("""
+                {"status":1,"code":200,"data":{"id":44,"orderNo":"ORD-44","businessId":2,"storeId":2,
+                 "orderStatus":"COMPLETED","grandTotal":3.00,"currencyCode":"USD"}}
+                """);
+        CapturedJsonExchange payment = new CapturedJsonExchange("{}");
+        PosQrCheckoutService service = new PosQrCheckoutService(
+                client(completed), client(payment), WebClient.builder().build(), OBJECT_MAPPER);
+
+        StepVerifier.create(service.resume(44L, new PosQrResumeRequest(2L, 2L, 6L, "PAY-x", null), false))
+                .expectErrorSatisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode()).isEqualTo(HttpStatus.CONFLICT))
+                .verify();
+        StepVerifier.create(service.resume(44L, new PosQrResumeRequest(2L, 9L, 6L, "PAY-x", null), false))
+                .expectErrorSatisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND))
+                .verify();
         assertThat(payment.request()).isNull();
     }
 

@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.sharedlib.response.ApiResponse;
 import com.x.bff.dto.PosQrCheckoutRequest;
 import com.x.bff.dto.PosQrCheckoutResponse;
+import com.x.bff.dto.PosQrResumeRequest;
 import com.x.bff.service.PosQrCheckoutService;
 import com.x.bff.service.ServiceClientFactory;
 import com.x.bff.utils.XUtil;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -85,6 +87,25 @@ public class PaymentController {
                                 HttpStatus.CREATED.value(),
                                 "Bakong KHQR checkout created",
                                 response)));
+    }
+
+    /** A new KHQR for a POS sale that was left unpaid, so the cashier can continue it from Recent orders. */
+    @PostMapping("/pos-qr-bakong/orders/{orderId}")
+    @PreAuthorize("hasAuthority('x-order:create') and hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<ApiResponse<PosQrCheckoutResponse>>> resumeBakongPosQr(
+            @PathVariable @Positive Long orderId, @Valid @RequestBody PosQrResumeRequest request) {
+        return posQrCheckoutService.resume(orderId, request, true)
+                .map(response -> ResponseEntity.status(HttpStatus.CREATED)
+                        .body(ApiResponse.success(HttpStatus.CREATED.value(), "Bakong KHQR created for the order", response)));
+    }
+
+    @PostMapping("/pos-qr-demo/orders/{orderId}")
+    @PreAuthorize("hasAuthority('x-order:create') and hasAuthority('x-payment:create')")
+    public Mono<ResponseEntity<ApiResponse<PosQrCheckoutResponse>>> resumeSimulatedPosQr(
+            @PathVariable @Positive Long orderId, @Valid @RequestBody PosQrResumeRequest request) {
+        return posQrCheckoutService.resume(orderId, request, false)
+                .map(response -> ResponseEntity.status(HttpStatus.CREATED)
+                        .body(ApiResponse.success(HttpStatus.CREATED.value(), "Simulated QR created for the order", response)));
     }
 
     /** Asks Bakong whether a pending KHQR was paid; the POS calls this while the QR is shown. */

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sharedlib.response.ApiResponse;
 import com.x.bff.dto.PosQrCheckoutRequest;
 import com.x.bff.dto.PosQrCheckoutResponse;
+import com.x.bff.dto.PosQrResumeRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
@@ -84,6 +85,34 @@ public class PosQrCheckoutService {
                 .flatMap(payee -> create(request, "/bakong-qr", payee));
     }
 
+    /**
+     * A fresh KHQR for a POS order that is still waiting for payment, for example after the cashier
+     * closed the QR before the customer paid. The order must belong to the business and store given.
+     */
+    public Mono<PosQrCheckoutResponse> resume(Long orderId, PosQrResumeRequest request, boolean bakong) {
+        Mono<ObjectNode> payee = bakong ? bakongPayee(request.businessId()) : Mono.just(objectMapper.createObjectNode());
+        return payee.flatMap(extra -> orderClient.get()
+                .uri("/{id}", orderId)
+                .retrieve()
+                .bodyToMono(JSON_RESPONSE)
+                .map(this::requireData)
+                .flatMap(order -> {
+                    if (order.path("businessId").asLong(-1) != request.businessId()
+                            || order.path("storeId").asLong(-1) != request.storeId()) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found in this store"));
+                    }
+                    if (!"PENDING_PAYMENT".equals(order.path("orderStatus").asText())) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.CONFLICT,
+                                "Order " + order.path("orderNo").asText("") + " is no longer waiting for payment"));
+                    }
+                    return createPayment(request.businessId(), request.storeId(), request.cashierId(),
+                            request.paymentIdempotencyKey(), request.paymentNote(), order,
+                            bakong ? "/bakong-qr" : "/simulated-qr", bakong ? extra : null)
+                            .flatMap(this::embedQrImage)
+                            .map(payment -> new PosQrCheckoutResponse(order, payment));
+                }));
+    }
+
     private Mono<ObjectNode> bakongPayee(Long businessId) {
         if (businessClient == null) {
             return Mono.error(new IllegalStateException("Business service client is not configured"));
@@ -134,13 +163,15 @@ public class PosQrCheckoutService {
                 .retrieve()
                 .bodyToMono(JSON_RESPONSE)
                 .map(this::requireData)
-                .flatMap(order -> createPayment(request, order, paymentPath, extraPaymentFields)
+                .flatMap(order -> createPayment(request.businessId(), request.storeId(), request.cashierId(),
+                        request.paymentIdempotencyKey(), request.paymentNote(), order, paymentPath, extraPaymentFields)
                         .flatMap(payment -> embedQrImage(payment)
                                 .map(enrichedPayment -> new PosQrCheckoutResponse(order, enrichedPayment))));
     }
 
     private Mono<JsonNode> createPayment(
-            PosQrCheckoutRequest request, JsonNode order, String paymentPath, ObjectNode extraPaymentFields) {
+            Long businessId, Long storeId, Long cashierId, String paymentIdempotencyKey, String paymentNote,
+            JsonNode order, String paymentPath, ObjectNode extraPaymentFields) {
         long orderId = requiredLong(order, "id");
         String currencyCode = requiredText(order, "currencyCode");
         JsonNode grandTotal = order.get("grandTotal");
@@ -150,14 +181,14 @@ public class PosQrCheckoutService {
 
         ObjectNode paymentRequest = objectMapper.createObjectNode();
         paymentRequest.put("orderId", orderId);
-        paymentRequest.put("businessId", request.businessId());
-        paymentRequest.put("storeId", request.storeId());
-        paymentRequest.put("cashierId", request.cashierId());
+        paymentRequest.put("businessId", businessId);
+        paymentRequest.put("storeId", storeId);
+        paymentRequest.put("cashierId", cashierId);
         paymentRequest.set("amount", grandTotal);
         paymentRequest.put("currencyCode", currencyCode);
-        paymentRequest.put("idempotencyKey", request.paymentIdempotencyKey());
-        if (StringUtils.hasText(request.paymentNote())) {
-            paymentRequest.put("note", request.paymentNote());
+        paymentRequest.put("idempotencyKey", paymentIdempotencyKey);
+        if (StringUtils.hasText(paymentNote)) {
+            paymentRequest.put("note", paymentNote);
         }
         if (extraPaymentFields != null) {
             paymentRequest.setAll(extraPaymentFields);
