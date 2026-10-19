@@ -3,6 +3,8 @@ package com.x.bff.dto;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/** suspended is computed from suspendedAt: written to JSON, ignored when read back (for example from the Redis cache). */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(value = "suspended", allowGetters = true)
 public record StoreResponse(
         Long id,
         Long businessId,
