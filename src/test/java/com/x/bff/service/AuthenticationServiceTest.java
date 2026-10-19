@@ -139,8 +139,65 @@ class AuthenticationServiceTest {
     }
 
     private void givenUserWithPassword(String password) {
-        when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(
-                credentials(passwordEncoder.encode(password), Set.of(), Set.of(21L))));
+        var credentials = credentials(passwordEncoder.encode(password), Set.of(), Set.of(21L));
+        when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(credentials));
+        when(userServiceClient.findByUsername("user", 12L)).thenReturn(Mono.just(credentials));
+    }
+
+    private void givenWorkspace(String businessExtra, String storeExtra) {
+        when(serviceClientFactory.forService("business", "/api/v1/businesses")).thenReturn(jsonClient("""
+                {"status":1,"code":200,"data":[{"id":12,"ownerUserId":1,"name":"Demo Business","code":"DEMO","defaultCurrencyCode":"USD","status":1%s}]}
+                """.formatted(businessExtra)));
+        when(serviceClientFactory.forService("store", "/api/v1/stores")).thenReturn(jsonClient("""
+                {"status":1,"code":200,"data":{"content":[{"id":21,"businessId":12,"name":"Main Store","code":"MAIN","status":1%s}],"page":0,"size":100,"totalElements":1,"totalPages":1}}
+                """.formatted(storeExtra)));
+    }
+
+    private static WebClient jsonClient(String body) {
+        return WebClient.builder()
+                .exchangeFunction(request -> Mono.just(ClientResponse.create(HttpStatus.OK)
+                        .header(HttpHeaders.CONTENT_TYPE, "application/json").body(body).build()))
+                .build();
+    }
+
+    @Test
+    void suspendedMerchantIsRefusedWithTheReasonBeforeAnyCodeIsSent() {
+        givenUserWithPassword("pass");
+        givenMfa(false, true);
+        givenWorkspace(",\"suspendedAt\":\"2026-10-19T10:00:00\",\"suspensionReason\":\"Unpaid platform fees\"", "");
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.authenticate(new AuthRequest("user", "pass"), ClientChannel.WEB))
+                .expectErrorSatisfies(error -> {
+                    var status = (org.springframework.web.server.ResponseStatusException) error;
+                    assertEquals(HttpStatus.FORBIDDEN, status.getStatusCode());
+                    org.junit.jupiter.api.Assertions.assertTrue(status.getReason().contains("Unpaid platform fees"));
+                })
+                .verify();
+        verify(userServiceClient, never()).startEmailMfaLogin(anyLong());
+    }
+
+    @Test
+    void staffOfOnlySuspendedStoresAreRefusedButTheOwnerIsNot() {
+        var staff = new com.x.bff.dto.UserCredentialsResponse(5L, "user", passwordEncoder.encode("pass"), Set.of());
+        staff.setBusinessIds(Set.of(12L));
+        staff.setStoreIds(Set.of(21L));
+        when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(staff));
+        when(userServiceClient.findByUsername("user", 12L)).thenReturn(Mono.just(staff));
+        givenWorkspace("", ",\"suspendedAt\":\"2026-10-19T10:00:00\",\"suspensionReason\":\"Counterfeit goods\"");
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.authenticate(new AuthRequest("user", "pass"), ClientChannel.WEB))
+                .expectErrorSatisfies(error -> org.junit.jupiter.api.Assertions.assertTrue(
+                        ((org.springframework.web.server.ResponseStatusException) error).getReason().contains("Your store Main Store is suspended")))
+                .verify();
+
+        givenUserWithPassword("pass");
+        when(jwtUtils.generateToken(any(), any(), any(), any())).thenReturn("access");
+        when(jwtUtils.generateRefreshToken(any(), any())).thenReturn("refresh");
+        StepVerifier.create(service.authenticate(new AuthRequest("user", "pass"), ClientChannel.WEB))
+                .expectNextMatches(response -> response.getData().getUser() != null)
+                .verifyComplete();
     }
 
     private void givenMfa(boolean telegram, boolean email) {

@@ -22,7 +22,16 @@ public record BusinessResponse(
         String bakongAccountId,
         String reviewReason,
         Long reviewedByUserId,
-        LocalDateTime reviewedAt) {
+        LocalDateTime reviewedAt,
+        LocalDateTime suspendedAt,
+        String suspensionReason,
+        Long suspendedByUserId) {
+
+    /** Suspended by the platform: no sign-in, sales or marketplace listing until reinstated. */
+    @com.fasterxml.jackson.annotation.JsonProperty("suspended")
+    public boolean suspended() {
+        return suspendedAt != null;
+    }
 
     public BusinessResponse(
             Long id, Long ownerUserId, String name, String code, String defaultCurrencyCode,
@@ -31,7 +40,7 @@ public record BusinessResponse(
             Integer status, LocalDateTime createdAt, LocalDateTime updatedAt, String bakongAccountId) {
         this(id, ownerUserId, name, code, defaultCurrencyCode, usdToKhrExchangeRate, taxRegistrationNumber,
                 taxRegistrationLabel, defaultTaxId, pricesIncludeTax, timeZone, fiscalYearStartMonth, status,
-                createdAt, updatedAt, bakongAccountId, null, null, null);
+                createdAt, updatedAt, bakongAccountId, null, null, null, null, null, null);
     }
 
     public BusinessResponse(
@@ -41,7 +50,7 @@ public record BusinessResponse(
             Integer status, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this(id, ownerUserId, name, code, defaultCurrencyCode, usdToKhrExchangeRate, taxRegistrationNumber,
                 taxRegistrationLabel, defaultTaxId, pricesIncludeTax, timeZone, fiscalYearStartMonth, status,
-                createdAt, updatedAt, null, null, null, null);
+                createdAt, updatedAt, null, null, null, null, null, null, null);
     }
 
     public BusinessResponse(

@@ -67,6 +67,7 @@ public class AuthenticationService {
         return findUser(request.getUsername())
                 .filter(user -> passwordMatches(request.getPassword(), user.getPassword()))
                 .switchIfEmpty(Mono.error(new BadCredentialsException("Invalid username or password")))
+                .flatMap(user -> requireActiveAccount(user).thenReturn(user))
                 .flatMap(user -> enabledMfaMethods(user.getId()).flatMap(methods -> {
                     if (methods.isEmpty()) return createTokenResponseWithBusiness(user, channel);
                     String selectionToken = jwtUtils.generateMfaSelectionToken(user.getUsername());
@@ -308,6 +309,7 @@ public class AuthenticationService {
                 .flatMap(business -> findStores(business.id())
                         .flatMap(stores -> ensureOwnerAccessWhenApplicable(user, business, stores)
                                 .then(userServiceClient.findByUsername(user.getUsername(), business.id()))
+                                .flatMap(scopedUser -> refuseSuspended(scopedUser, business, stores).thenReturn(scopedUser))
                                 .map(scopedUser -> createTokenResponse(
                                         scopedUser,
                                         channel,
@@ -317,6 +319,46 @@ public class AuthenticationService {
                                                         && scopedUser.getStoreIds().contains(store.id()))
                                                 .toList()))))
                 .switchIfEmpty(Mono.fromSupplier(() -> createTokenResponse(user, channel, null, List.of())));
+    }
+
+    /**
+     * Checked right after the password, before any 2FA code is sent, so a suspended account learns why at once.
+     * Sign-in, token refresh and 2FA verification check again when the session is issued.
+     */
+    private Mono<Void> requireActiveAccount(UserCredentialsResponse user) {
+        return findPrimaryBusiness(user)
+                .flatMap(business -> findStores(business.id())
+                        .flatMap(stores -> userServiceClient.findByUsername(user.getUsername(), business.id())
+                                .flatMap(scopedUser -> refuseSuspended(scopedUser, business, stores))))
+                .then();
+    }
+
+    /**
+     * A suspended merchant cannot sign in at all. Staff whose every store is suspended cannot either; the owner
+     * still can, to see which store is suspended and why.
+     */
+    private Mono<Void> refuseSuspended(UserCredentialsResponse user, BusinessResponse business, List<StoreResponse> stores) {
+        if (business.suspended()) {
+            return Mono.error(new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Your merchant account is suspended by TinhLuk" + reasonSuffix(business.suspensionReason())
+                            + " Contact TinhLuk support for help."));
+        }
+        if (java.util.Objects.equals(business.ownerUserId(), user.getId())) return Mono.empty();
+        List<StoreResponse> ownStores = stores.stream()
+                .filter(store -> user.getStoreIds() != null && user.getStoreIds().contains(store.id()))
+                .toList();
+        if (!ownStores.isEmpty() && ownStores.stream().allMatch(StoreResponse::suspended)) {
+            StoreResponse store = ownStores.get(0);
+            return Mono.error(new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
+                    (ownStores.size() == 1 ? "Your store " + store.name() + " is" : "Your stores are")
+                            + " suspended by TinhLuk" + reasonSuffix(store.suspensionReason())
+                            + " Ask the business owner or TinhLuk support for help."));
+        }
+        return Mono.empty();
+    }
+
+    private static String reasonSuffix(String reason) {
+        return reason == null || reason.isBlank() ? "." : ": " + reason.trim() + ".";
     }
 
     private Mono<BusinessResponse> findPrimaryBusiness(UserCredentialsResponse user) {

@@ -59,7 +59,8 @@ public class StoreImageUrlResolver {
                         store.postalCode(), store.phone(), store.alternatePhone(), store.email(), store.website(),
                         store.latitude(), store.longitude(), images, store.status(), store.marketplaceStatus(),
                         store.marketplaceAppliedAt(), store.marketplaceApprovedAt(), store.rejectionReason(),
-                        store.createdAt(), store.updatedAt(), store.openingHours()));
+                        store.createdAt(), store.updatedAt(), store.openingHours(),
+                        store.suspendedAt(), store.suspensionReason(), store.suspendedByUserId()));
     }
 
     public Mono<PageResponse<StoreResponse>> resolvePage(PageResponse<StoreResponse> page) {
@@ -85,7 +86,7 @@ public class StoreImageUrlResolver {
                 .concatMap(store -> resolve(store.image())
                         .map(file -> new MarketplaceStoreResponse(
                                 store.id(), store.name(), store.code(), store.storeType(), store.city(), store.countryCode(),
-                                file.url(), store.openingHours())))
+                                file.url(), store.openingHours(), store.businessId())))
                 .collectList();
     }
 

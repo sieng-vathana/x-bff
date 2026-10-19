@@ -90,7 +90,8 @@ public class PosQrCheckoutService {
      * closed the QR before the customer paid. The order must belong to the business and store given.
      */
     public Mono<PosQrCheckoutResponse> resume(Long orderId, PosQrResumeRequest request, boolean bakong) {
-        Mono<ObjectNode> payee = bakong ? bakongPayee(request.businessId()) : Mono.just(objectMapper.createObjectNode());
+        Mono<ObjectNode> payee = requireNotSuspended(request.businessId())
+                .then(bakong ? bakongPayee(request.businessId()) : Mono.just(objectMapper.createObjectNode()));
         return payee.flatMap(extra -> orderClient.get()
                 .uri("/{id}", orderId)
                 .retrieve()
@@ -111,6 +112,18 @@ public class PosQrCheckoutService {
                             .flatMap(this::embedQrImage)
                             .map(payment -> new PosQrCheckoutResponse(order, payment));
                 }));
+    }
+
+    /** New orders are refused by the order service; this stops a fresh KHQR for an order left unpaid. */
+    private Mono<Void> requireNotSuspended(Long businessId) {
+        if (businessClient == null) return Mono.empty();
+        return businessClient.get().uri("/{id}", businessId).retrieve()
+                .bodyToMono(JSON_RESPONSE)
+                .mapNotNull(ApiResponse::getData)
+                .flatMap(business -> business.path("suspended").asBoolean(false)
+                        ? Mono.<Void>error(new ResponseStatusException(HttpStatus.FORBIDDEN,
+                                "This merchant is suspended by TinhLuk and cannot take payments."))
+                        : Mono.<Void>empty());
     }
 
     private Mono<ObjectNode> bakongPayee(Long businessId) {

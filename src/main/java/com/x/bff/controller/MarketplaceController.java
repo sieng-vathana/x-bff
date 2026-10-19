@@ -53,6 +53,7 @@ public class MarketplaceController {
 
     private final WebClient productClient;
     private final WebClient storeClient;
+    private final WebClient businessClient;
     private final WebClient customerClient;
     private final UserServiceClient userServiceClient;
     private final ProductImageUrlResolver productImageUrlResolver;
@@ -65,6 +66,7 @@ public class MarketplaceController {
             StoreImageUrlResolver storeImageUrlResolver) {
         this.productClient = clientFactory.forService("product", "/api/v1/marketplace");
         this.storeClient = clientFactory.forService("store", "/api/v1/stores");
+        this.businessClient = clientFactory.forService("business", "/api/v1/businesses");
         this.customerClient = clientFactory.forService("customer", "/internal/marketplace");
         this.userServiceClient = userServiceClient;
         this.productImageUrlResolver = productImageUrlResolver;
@@ -162,8 +164,28 @@ public class MarketplaceController {
                 .retrieve()
                 .bodyToMono(STORES_TYPE)
                 .map(ApiResponse::getData)
+                .flatMap(this::withoutSuspendedMerchants)
                 .flatMap(storeImageUrlResolver::resolveMarketplaceStores)
                 .defaultIfEmpty(List.of());
+    }
+
+    /** Shops of a merchant the platform has suspended are not shown, so their products drop out too. */
+    private Mono<List<MarketplaceStoreResponse>> withoutSuspendedMerchants(List<MarketplaceStoreResponse> stores) {
+        List<Long> businessIds = stores.stream().map(MarketplaceStoreResponse::businessId)
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        if (businessIds.isEmpty()) return Mono.just(stores);
+        return reactor.core.publisher.Flux.fromIterable(businessIds)
+                .flatMap(id -> businessClient.get().uri("/{id}", id).retrieve()
+                        .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ApiResponse<com.x.bff.dto.BusinessResponse>>() {})
+                        .mapNotNull(ApiResponse::getData)
+                        // A merchant that cannot be looked up is kept, so a business-service hiccup does not empty the marketplace.
+                        .onErrorResume(error -> Mono.empty()))
+                .filter(com.x.bff.dto.BusinessResponse::suspended)
+                .map(com.x.bff.dto.BusinessResponse::id)
+                .collect(java.util.stream.Collectors.toSet())
+                .map(suspended -> stores.stream()
+                        .filter(store -> store.businessId() == null || !suspended.contains(store.businessId()))
+                        .toList());
     }
 
     private MarketplaceHomeResponse toResponse(
