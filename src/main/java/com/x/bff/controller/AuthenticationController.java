@@ -5,6 +5,7 @@ import com.x.bff.dto.AuthResponse;
 import com.x.bff.dto.RefreshTokenRequest;
 import com.x.bff.dto.RegistrationRequest;
 import com.x.bff.dto.TelegramMfaLoginRequest;
+import com.x.bff.dto.EmailMfaLoginRequest;
 import com.x.bff.security.AuthCookieSupport;
 import com.x.bff.security.ClientChannel;
 import com.x.bff.security.JwtUtils;
@@ -59,6 +60,17 @@ public class AuthenticationController {
             ServerWebExchange exchange) {
         ClientChannel channel = ClientChannel.fromHeader(clientType);
         return authenticationService.verifyTelegramMfa(
+                        request.username(), request.challengeToken(), request.code(), channel)
+                .map(response -> buildAuthResponse(response, channel, exchange));
+    }
+
+    @PostMapping("/verify-email")
+    public Mono<ResponseEntity<ApiResponse<AuthResponse>>> verifyEmail(
+            @Valid @RequestBody EmailMfaLoginRequest request,
+            @RequestHeader(value = ClientChannel.HEADER_NAME, defaultValue = "mobile") String clientType,
+            ServerWebExchange exchange) {
+        ClientChannel channel = ClientChannel.fromHeader(clientType);
+        return authenticationService.verifyEmailMfa(
                         request.username(), request.challengeToken(), request.code(), channel)
                 .map(response -> buildAuthResponse(response, channel, exchange));
     }
@@ -153,6 +165,7 @@ public class AuthenticationController {
                 .mfaMethod(data.getMfaMethod())
                 .mfaChallengeToken(data.getMfaChallengeToken())
                 .mfaExpiresAt(data.getMfaExpiresAt())
+                .mfaDestination(data.getMfaDestination())
                 .build();
 
         return ResponseEntity.ok(ApiResponse.success(response.getCode(), webSafe));

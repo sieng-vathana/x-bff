@@ -38,4 +38,5 @@ public class AuthResponse {
     private String mfaMethod;
     private String mfaChallengeToken;
     private java.time.Instant mfaExpiresAt;
+    private String mfaDestination;
 }
