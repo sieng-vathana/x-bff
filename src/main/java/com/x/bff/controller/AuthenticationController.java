@@ -4,6 +4,7 @@ import com.x.bff.dto.AuthRequest;
 import com.x.bff.dto.AuthResponse;
 import com.x.bff.dto.RefreshTokenRequest;
 import com.x.bff.dto.RegistrationRequest;
+import com.x.bff.dto.TelegramMfaLoginRequest;
 import com.x.bff.security.AuthCookieSupport;
 import com.x.bff.security.ClientChannel;
 import com.x.bff.security.JwtUtils;
@@ -48,6 +49,17 @@ public class AuthenticationController {
             ServerWebExchange exchange) {
         ClientChannel channel = ClientChannel.fromHeader(clientType);
         return authenticationService.authenticate(request, channel)
+                .map(response -> buildAuthResponse(response, channel, exchange));
+    }
+
+    @PostMapping("/verify-telegram")
+    public Mono<ResponseEntity<ApiResponse<AuthResponse>>> verifyTelegram(
+            @Valid @RequestBody TelegramMfaLoginRequest request,
+            @RequestHeader(value = ClientChannel.HEADER_NAME, defaultValue = "mobile") String clientType,
+            ServerWebExchange exchange) {
+        ClientChannel channel = ClientChannel.fromHeader(clientType);
+        return authenticationService.verifyTelegramMfa(
+                        request.username(), request.challengeToken(), request.code(), channel)
                 .map(response -> buildAuthResponse(response, channel, exchange));
     }
 
@@ -137,6 +149,10 @@ public class AuthenticationController {
                 .user(data.getUser())
                 .business(data.getBusiness())
                 .stores(data.getStores())
+                .mfaRequired(data.getMfaRequired())
+                .mfaMethod(data.getMfaMethod())
+                .mfaChallengeToken(data.getMfaChallengeToken())
+                .mfaExpiresAt(data.getMfaExpiresAt())
                 .build();
 
         return ResponseEntity.ok(ApiResponse.success(response.getCode(), webSafe));

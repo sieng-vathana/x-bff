@@ -33,4 +33,9 @@ public class AuthResponse {
     private BusinessResponse business;
     /** Stores for the primary business, so the initial workspace needs no follow-up request. */
     private List<StoreResponse> stores;
+    /** Set when the password was accepted but a second factor is still required. */
+    private Boolean mfaRequired;
+    private String mfaMethod;
+    private String mfaChallengeToken;
+    private java.time.Instant mfaExpiresAt;
 }

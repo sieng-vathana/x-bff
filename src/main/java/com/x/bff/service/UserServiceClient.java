@@ -1,6 +1,9 @@
 package com.x.bff.service;
 
 import com.x.bff.dto.UserCredentialsResponse;
+import com.x.bff.dto.TelegramMfaStatus;
+import com.x.bff.dto.TelegramMfaLink;
+import com.x.bff.dto.TelegramMfaChallenge;
 import com.sharedlib.response.ApiResponse;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,6 +43,45 @@ public class UserServiceClient {
                         .build(username))
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<UserCredentialsResponse>>() {})
+                .map(ApiResponse::getData);
+    }
+
+    public Mono<TelegramMfaStatus> telegramMfaStatus(Long userId) {
+        return userClient.get().uri("/{userId}/telegram-mfa", userId).retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<TelegramMfaStatus>>() {})
+                .map(ApiResponse::getData);
+    }
+
+    public Mono<TelegramMfaLink> createTelegramMfaLink(Long userId) {
+        return userClient.post().uri("/{userId}/telegram-mfa/link", userId).retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<TelegramMfaLink>>() {})
+                .map(ApiResponse::getData);
+    }
+
+    public Mono<TelegramMfaStatus> setTelegramMfaEnabled(Long userId, boolean enabled) {
+        return userClient.put().uri("/{userId}/telegram-mfa/enabled", userId)
+                .bodyValue(new TelegramEnabledCommand(enabled)).retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<TelegramMfaStatus>>() {})
+                .map(ApiResponse::getData);
+    }
+
+    public Mono<TelegramMfaStatus> disconnectTelegramMfa(Long userId) {
+        return userClient.delete().uri("/{userId}/telegram-mfa", userId).retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<TelegramMfaStatus>>() {})
+                .map(ApiResponse::getData);
+    }
+
+    public Mono<TelegramMfaChallenge> startTelegramMfaLogin(Long userId, String username) {
+        return userClient.post().uri(uriBuilder -> uriBuilder.path("/{userId}/telegram-mfa/challenges")
+                        .queryParam("username", username).build(userId))
+                .retrieve().bodyToMono(new ParameterizedTypeReference<ApiResponse<TelegramMfaChallenge>>() {})
+                .map(ApiResponse::getData);
+    }
+
+    public Mono<Boolean> verifyTelegramMfa(Long userId, String challengeToken, String code) {
+        return userClient.post().uri("/telegram-mfa/verify")
+                .bodyValue(new TelegramVerifyCommand(userId, challengeToken, code)).retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<Boolean>>() {})
                 .map(ApiResponse::getData);
     }
 
@@ -88,6 +130,9 @@ public class UserServiceClient {
 
     private record OwnerAccessCommand(List<Long> storeIds) {
     }
+
+    private record TelegramEnabledCommand(boolean enabled) { }
+    private record TelegramVerifyCommand(Long userId, String challengeToken, String code) { }
 
     public record RegisteredUser(Long id) {
     }

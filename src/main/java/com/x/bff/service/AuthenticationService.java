@@ -9,6 +9,8 @@ import com.x.bff.dto.CreateStoreRequest;
 import com.x.bff.dto.RegistrationRequest;
 import com.x.bff.dto.StoreResponse;
 import com.x.bff.dto.UserCredentialsResponse;
+import com.x.bff.dto.TelegramMfaStatus;
+import com.x.bff.dto.TelegramMfaChallenge;
 import com.x.bff.security.ClientChannel;
 import com.x.bff.security.JwtUtils;
 import com.sharedlib.response.ApiResponse;
@@ -59,7 +61,32 @@ public class AuthenticationService {
         return findUser(request.getUsername())
                 .filter(user -> passwordMatches(request.getPassword(), user.getPassword()))
                 .switchIfEmpty(Mono.error(new BadCredentialsException("Invalid username or password")))
-                .flatMap(user -> createTokenResponseWithBusiness(user, channel));
+                .flatMap(user -> userServiceClient.telegramMfaStatus(user.getId())
+                        .flatMap(status -> status.enabled()
+                                ? userServiceClient.startTelegramMfaLogin(user.getId(), user.getUsername())
+                                        .map(challenge -> telegramChallengeResponse(challenge, channel))
+                                : createTokenResponseWithBusiness(user, channel)));
+    }
+
+    public Mono<ApiResponse<AuthResponse>> verifyTelegramMfa(
+            String username, String challengeToken, String code, ClientChannel channel) {
+        return findUser(username)
+                .switchIfEmpty(Mono.error(new BadCredentialsException("Invalid sign-in verification")))
+                .flatMap(user -> userServiceClient.verifyTelegramMfa(user.getId(), challengeToken, code)
+                        .filter(Boolean.TRUE::equals)
+                        .switchIfEmpty(Mono.error(new BadCredentialsException("Invalid or expired sign-in code")))
+                        .then(createTokenResponseWithBusiness(user, channel)));
+    }
+
+    private ApiResponse<AuthResponse> telegramChallengeResponse(TelegramMfaChallenge challenge, ClientChannel channel) {
+        AuthResponse response = AuthResponse.builder()
+                .mfaRequired(true)
+                .mfaMethod("TELEGRAM")
+                .mfaChallengeToken(challenge.challengeToken())
+                .mfaExpiresAt(challenge.expiresAt())
+                .channel(channel.wireValue())
+                .build();
+        return ApiResponse.success(HttpStatus.OK.value(), response);
     }
 
     public Mono<ApiResponse<AuthResponse>> refresh(String refreshToken, ClientChannel channel) {
