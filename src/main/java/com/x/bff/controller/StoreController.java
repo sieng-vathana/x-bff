@@ -115,13 +115,19 @@ public class StoreController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('x-store:read')")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:read')")
     public Mono<ResponseEntity<ApiResponse<PageResponse<StoreResponse>>>> getByBusiness(
             @RequestParam Long businessId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             Authentication authentication) {
-        return requireBusinessAccess(businessId, authentication)
+        // Platform backoffice can query a business-scoped list without requiring
+        // that the business still exists or belongs to the admin account.
+        Mono<Void> accessCheck = authentication.getAuthorities().stream()
+                .anyMatch(authority -> "platform:admin".equals(authority.getAuthority()))
+                ? Mono.empty()
+                : requireBusinessAccess(businessId, authentication);
+        return accessCheck
                 .then(storeClient.get()
                         .uri(uriBuilder -> uriBuilder
                                 .queryParam("businessId", businessId)
