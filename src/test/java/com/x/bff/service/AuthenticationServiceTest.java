@@ -1,6 +1,10 @@
 package com.x.bff.service;
 
 import com.x.bff.dto.AuthRequest;
+import com.x.bff.dto.EmailMfaChallenge;
+import com.x.bff.dto.EmailMfaStatus;
+import com.x.bff.dto.TelegramMfaChallenge;
+import com.x.bff.dto.TelegramMfaStatus;
 import com.x.bff.dto.RegistrationRequest;
 import com.x.bff.security.ClientChannel;
 import com.x.bff.security.JwtUtils;
@@ -18,6 +22,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -53,6 +58,96 @@ class AuthenticationServiceTest {
                 .thenReturn(storeClient());
         when(userServiceClient.ensureOwnerBusinessAccess(anyLong(), anyLong(), any()))
                 .thenReturn(Mono.empty());
+        givenMfa(false, false);
+    }
+
+    @Test
+    void withTelegramAndEmailOnTheUserChoosesAndNoCodeIsSentYet() {
+        givenUserWithPassword("pass");
+        givenMfa(true, true);
+        when(jwtUtils.generateMfaSelectionToken("user")).thenReturn("select-token");
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.authenticate(new AuthRequest("user", "pass"), ClientChannel.WEB))
+                .expectNextMatches(response -> Boolean.TRUE.equals(response.getData().getMfaRequired())
+                        && "CHOOSE".equals(response.getData().getMfaMethod())
+                        && List.of("TELEGRAM", "EMAIL").equals(response.getData().getMfaMethods())
+                        && "select-token".equals(response.getData().getMfaSelectionToken())
+                        && response.getData().getAccessToken() == null
+                        && response.getData().getMfaChallengeToken() == null)
+                .verifyComplete();
+        verify(userServiceClient, never()).startEmailMfaLogin(anyLong());
+        verify(userServiceClient, never()).startTelegramMfaLogin(anyLong(), any());
+    }
+
+    @Test
+    void withOnlyOneMethodTheCodeIsSentStraightAway() {
+        givenUserWithPassword("pass");
+        givenMfa(true, false);
+        when(jwtUtils.generateMfaSelectionToken("user")).thenReturn("select-token");
+        when(userServiceClient.startTelegramMfaLogin(1L, "user"))
+                .thenReturn(Mono.just(new TelegramMfaChallenge("tg-challenge", Instant.now().plusSeconds(300))));
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.authenticate(new AuthRequest("user", "pass"), ClientChannel.WEB))
+                .expectNextMatches(response -> "TELEGRAM".equals(response.getData().getMfaMethod())
+                        && "tg-challenge".equals(response.getData().getMfaChallengeToken())
+                        && List.of("TELEGRAM").equals(response.getData().getMfaMethods()))
+                .verifyComplete();
+        verify(userServiceClient, never()).startEmailMfaLogin(anyLong());
+    }
+
+    @Test
+    void sendMfaCodeSendsToTheChosenMethod() {
+        givenUserWithPassword("pass");
+        givenMfa(true, true);
+        when(jwtUtils.validateMfaSelectionToken("select-token", "user")).thenReturn(true);
+        when(userServiceClient.startTelegramMfaLogin(1L, "user"))
+                .thenReturn(Mono.just(new TelegramMfaChallenge("tg-challenge", Instant.now().plusSeconds(300))));
+        when(userServiceClient.startEmailMfaLogin(1L))
+                .thenReturn(Mono.just(new EmailMfaChallenge("mail-challenge", Instant.now().plusSeconds(300), "us•••@example.com")));
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.sendMfaCode("user", "select-token", "TELEGRAM", ClientChannel.WEB))
+                .expectNextMatches(response -> "TELEGRAM".equals(response.getData().getMfaMethod())
+                        && "tg-challenge".equals(response.getData().getMfaChallengeToken())
+                        && "select-token".equals(response.getData().getMfaSelectionToken())
+                        && List.of("TELEGRAM", "EMAIL").equals(response.getData().getMfaMethods()))
+                .verifyComplete();
+        StepVerifier.create(service.sendMfaCode("user", "select-token", "EMAIL", ClientChannel.WEB))
+                .expectNextMatches(response -> "EMAIL".equals(response.getData().getMfaMethod())
+                        && "us•••@example.com".equals(response.getData().getMfaDestination()))
+                .verifyComplete();
+    }
+
+    @Test
+    void sendMfaCodeRejectsAnExpiredSelectionOrAMethodThatIsOff() {
+        givenUserWithPassword("pass");
+        givenMfa(true, false);
+        when(jwtUtils.validateMfaSelectionToken("old-token", "user")).thenReturn(false);
+        when(jwtUtils.validateMfaSelectionToken("select-token", "user")).thenReturn(true);
+        AuthenticationService service = new AuthenticationService(jwtUtils, userServiceClient, serviceClientFactory, storeImageUrlResolver);
+
+        StepVerifier.create(service.sendMfaCode("user", "old-token", "TELEGRAM", ClientChannel.WEB))
+                .expectError(BadCredentialsException.class)
+                .verify();
+        StepVerifier.create(service.sendMfaCode("user", "select-token", "EMAIL", ClientChannel.WEB))
+                .expectError(BadCredentialsException.class)
+                .verify();
+        verify(userServiceClient, never()).startEmailMfaLogin(anyLong());
+        verify(userServiceClient, never()).startTelegramMfaLogin(anyLong(), any());
+    }
+
+    private void givenUserWithPassword(String password) {
+        when(userServiceClient.findByUsername("user")).thenReturn(Mono.just(
+                credentials(passwordEncoder.encode(password), Set.of(), Set.of(21L))));
+    }
+
+    private void givenMfa(boolean telegram, boolean email) {
+        when(userServiceClient.telegramMfaStatus(anyLong()))
+                .thenReturn(Mono.just(new TelegramMfaStatus(true, "bot", telegram, telegram, false)));
+        when(userServiceClient.emailMfaStatus(anyLong()))
+                .thenReturn(Mono.just(new EmailMfaStatus(true, true, email, email, "us•••@example.com")));
     }
 
     @Test

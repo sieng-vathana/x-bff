@@ -29,6 +29,8 @@ public class JwtUtils {
     private static final String USER_ID_CLAIM = "uid";
     private static final String ACCESS_TOKEN_TYPE = "access";
     private static final String REFRESH_TOKEN_TYPE = "refresh";
+    private static final String MFA_SELECTION_TOKEN_TYPE = "mfa-select";
+    private static final long MFA_SELECTION_EXPIRATION = TimeUnit.MINUTES.toMillis(10);
 
     private final long expiration;
     private final long refreshExpiration;
@@ -93,6 +95,17 @@ public class JwtUtils {
 
     public Boolean validateRefreshToken(String token, String username) {
         return validateToken(token, username, REFRESH_TOKEN_TYPE);
+    }
+
+    /** Proves the password step passed so a second-factor code can be sent to a method the user chooses. */
+    public String generateMfaSelectionToken(String username) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put(TOKEN_TYPE_CLAIM, MFA_SELECTION_TOKEN_TYPE);
+        return createToken(claims, username, MFA_SELECTION_EXPIRATION);
+    }
+
+    public Boolean validateMfaSelectionToken(String token, String username) {
+        return validateToken(token, username, MFA_SELECTION_TOKEN_TYPE);
     }
 
     private Boolean validateToken(String token, String username, String expectedType) {

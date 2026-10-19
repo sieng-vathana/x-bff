@@ -39,4 +39,8 @@ public class AuthResponse {
     private String mfaChallengeToken;
     private java.time.Instant mfaExpiresAt;
     private String mfaDestination;
+    /** Second-factor methods the user has turned on, e.g. TELEGRAM and EMAIL. */
+    private List<String> mfaMethods;
+    /** Short-lived proof that the password was accepted, used to send a code to a chosen method. */
+    private String mfaSelectionToken;
 }

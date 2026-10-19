@@ -6,6 +6,7 @@ import com.x.bff.dto.RefreshTokenRequest;
 import com.x.bff.dto.RegistrationRequest;
 import com.x.bff.dto.TelegramMfaLoginRequest;
 import com.x.bff.dto.EmailMfaLoginRequest;
+import com.x.bff.dto.MfaSendRequest;
 import com.x.bff.security.AuthCookieSupport;
 import com.x.bff.security.ClientChannel;
 import com.x.bff.security.JwtUtils;
@@ -50,6 +51,17 @@ public class AuthenticationController {
             ServerWebExchange exchange) {
         ClientChannel channel = ClientChannel.fromHeader(clientType);
         return authenticationService.authenticate(request, channel)
+                .map(response -> buildAuthResponse(response, channel, exchange));
+    }
+
+    /** Sends a sign-in code to the method the user picked (Telegram or email) after the password step. */
+    @PostMapping("/mfa/send")
+    public Mono<ResponseEntity<ApiResponse<AuthResponse>>> sendMfaCode(
+            @Valid @RequestBody MfaSendRequest request,
+            @RequestHeader(value = ClientChannel.HEADER_NAME, defaultValue = "mobile") String clientType,
+            ServerWebExchange exchange) {
+        ClientChannel channel = ClientChannel.fromHeader(clientType);
+        return authenticationService.sendMfaCode(request.username(), request.selectionToken(), request.method(), channel)
                 .map(response -> buildAuthResponse(response, channel, exchange));
     }
 
@@ -166,6 +178,8 @@ public class AuthenticationController {
                 .mfaChallengeToken(data.getMfaChallengeToken())
                 .mfaExpiresAt(data.getMfaExpiresAt())
                 .mfaDestination(data.getMfaDestination())
+                .mfaMethods(data.getMfaMethods())
+                .mfaSelectionToken(data.getMfaSelectionToken())
                 .build();
 
         return ResponseEntity.ok(ApiResponse.success(response.getCode(), webSafe));

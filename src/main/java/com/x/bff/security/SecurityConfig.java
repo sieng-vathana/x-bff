@@ -40,6 +40,7 @@ public class SecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(
                                 "/api/v1/auth/login",
+                                "/api/v1/auth/mfa/send",
                                 "/api/v1/auth/verify-telegram",
                                 "/api/v1/auth/verify-email",
                                 "/api/v1/auth/register",

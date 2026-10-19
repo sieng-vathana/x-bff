@@ -38,6 +38,10 @@ public class AuthenticationService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthenticationService.class);
 
+    private static final String MFA_TELEGRAM = "TELEGRAM";
+    private static final String MFA_EMAIL = "EMAIL";
+    private static final String MFA_CHOOSE = "CHOOSE";
+
     private final JwtUtils jwtUtils;
     private final UserServiceClient userServiceClient;
     private final WebClient businessClient;
@@ -63,15 +67,61 @@ public class AuthenticationService {
         return findUser(request.getUsername())
                 .filter(user -> passwordMatches(request.getPassword(), user.getPassword()))
                 .switchIfEmpty(Mono.error(new BadCredentialsException("Invalid username or password")))
-                .flatMap(user -> userServiceClient.emailMfaStatus(user.getId())
-                        .flatMap(email -> email.enabled()
-                                ? userServiceClient.startEmailMfaLogin(user.getId())
-                                        .map(challenge -> emailChallengeResponse(challenge, channel))
-                                : userServiceClient.telegramMfaStatus(user.getId())
-                                        .flatMap(telegram -> telegram.enabled()
-                                                ? userServiceClient.startTelegramMfaLogin(user.getId(), user.getUsername())
-                                                        .map(challenge -> telegramChallengeResponse(challenge, channel))
-                                                : createTokenResponseWithBusiness(user, channel))));
+                .flatMap(user -> enabledMfaMethods(user.getId()).flatMap(methods -> {
+                    if (methods.isEmpty()) return createTokenResponseWithBusiness(user, channel);
+                    String selectionToken = jwtUtils.generateMfaSelectionToken(user.getUsername());
+                    // With more than one method the user picks where the code goes; nothing is sent yet.
+                    if (methods.size() > 1) return Mono.just(chooseMethodResponse(methods, selectionToken, channel));
+                    return startMfaChallenge(user, methods.get(0), methods, selectionToken, channel);
+                }));
+    }
+
+    /** Sends a sign-in code to the chosen method once the password step has been passed. */
+    public Mono<ApiResponse<AuthResponse>> sendMfaCode(
+            String username, String selectionToken, String method, ClientChannel channel) {
+        if (!Boolean.TRUE.equals(jwtUtils.validateMfaSelectionToken(selectionToken, username))) {
+            return Mono.error(new BadCredentialsException("Your sign-in session expired. Please sign in again"));
+        }
+        return findUser(username)
+                .switchIfEmpty(Mono.error(new BadCredentialsException("Invalid sign-in verification")))
+                .flatMap(user -> enabledMfaMethods(user.getId())
+                        .filter(methods -> methods.contains(method))
+                        .switchIfEmpty(Mono.error(new BadCredentialsException("This verification method is not turned on")))
+                        .flatMap(methods -> startMfaChallenge(user, method, methods, selectionToken, channel)));
+    }
+
+    private Mono<List<String>> enabledMfaMethods(Long userId) {
+        return Mono.zip(userServiceClient.telegramMfaStatus(userId), userServiceClient.emailMfaStatus(userId))
+                .map(statuses -> {
+                    List<String> methods = new java.util.ArrayList<>();
+                    if (statuses.getT1().enabled()) methods.add(MFA_TELEGRAM);
+                    if (statuses.getT2().enabled()) methods.add(MFA_EMAIL);
+                    return List.copyOf(methods);
+                });
+    }
+
+    private Mono<ApiResponse<AuthResponse>> startMfaChallenge(
+            UserCredentialsResponse user, String method, List<String> methods, String selectionToken, ClientChannel channel) {
+        Mono<ApiResponse<AuthResponse>> challenge = MFA_TELEGRAM.equals(method)
+                ? userServiceClient.startTelegramMfaLogin(user.getId(), user.getUsername())
+                        .map(sent -> telegramChallengeResponse(sent, channel))
+                : userServiceClient.startEmailMfaLogin(user.getId())
+                        .map(sent -> emailChallengeResponse(sent, channel));
+        return challenge.doOnNext(response -> {
+            response.getData().setMfaMethods(methods);
+            response.getData().setMfaSelectionToken(selectionToken);
+        });
+    }
+
+    private ApiResponse<AuthResponse> chooseMethodResponse(List<String> methods, String selectionToken, ClientChannel channel) {
+        AuthResponse response = AuthResponse.builder()
+                .mfaRequired(true)
+                .mfaMethod(MFA_CHOOSE)
+                .mfaMethods(methods)
+                .mfaSelectionToken(selectionToken)
+                .channel(channel.wireValue())
+                .build();
+        return ApiResponse.success(HttpStatus.OK.value(), response);
     }
 
     public Mono<ApiResponse<AuthResponse>> verifyTelegramMfa(
