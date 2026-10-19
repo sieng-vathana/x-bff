@@ -20,6 +20,20 @@ public class DeliveryController {
         this.deliveryClient = clientFactory.forService("delivery", "/api/v1/deliveries");
     }
 
+    @GetMapping("/stores/{storeId}/config")
+    @PreAuthorize("hasAuthority('platform:admin')")
+    public Mono<ResponseEntity<?>> getStoreConfig(@PathVariable Long storeId) {
+        return forward(deliveryClient.get().uri("/stores/{storeId}/config", storeId));
+    }
+
+    @PutMapping("/stores/{storeId}/config")
+    @PreAuthorize("hasAuthority('platform:admin')")
+    public Mono<ResponseEntity<?>> updateStoreConfig(@PathVariable Long storeId, @RequestBody JsonNode request) {
+        return forward(deliveryClient.put().uri("/stores/{storeId}/config", storeId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
+    }
+
     @PostMapping("/quotes")
     @PreAuthorize("hasAuthority('x-order:read') or hasAuthority('x-order:create') or hasAuthority('x-delivery:read')")
     public Mono<ResponseEntity<?>> createQuotes(@RequestBody JsonNode request) {
