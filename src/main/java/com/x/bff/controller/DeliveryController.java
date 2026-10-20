@@ -32,7 +32,7 @@ public class DeliveryController {
     }
 
     @GetMapping("/providers")
-    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:read')")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:read') or hasAuthority('x-store:update')")
     public Mono<ResponseEntity<?>> getProviders() {
         return forward(deliveryClient.get().uri("/providers"));
     }
@@ -46,7 +46,7 @@ public class DeliveryController {
     }
 
     @GetMapping("/stores/{storeId}/config")
-    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:read')")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:read') or hasAuthority('x-store:update')")
     public Mono<ResponseEntity<?>> getStoreConfig(@PathVariable Long storeId, Authentication authentication) {
         return requireStoreAccess(storeId, authentication)
                 .then(forward(deliveryClient.get().uri("/stores/{storeId}/config", storeId)));
