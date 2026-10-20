@@ -41,7 +41,7 @@ public class FileController {
      * Postman: form-data field {@code file} (File) + optional kind/ownerType/ownerId.
      */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('x-storage:upload')")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-storage:upload')")
     public Mono<ResponseEntity<String>> upload(ServerWebExchange exchange) {
         ServerHttpRequest request = exchange.getRequest();
         MediaType contentType = request.getHeaders().getContentType();
@@ -64,7 +64,7 @@ public class FileController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('x-storage:read')")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-storage:read')")
     public Mono<ResponseEntity<String>> meta(@PathVariable Long id) {
         return storageClient.get()
                 .uri("/{id}", id)
@@ -77,7 +77,7 @@ public class FileController {
      * Use this URL in {@code <img src="...">} after login cookie is set (same origin / credentials).
      */
     @GetMapping("/{id}/content")
-    @PreAuthorize("hasAuthority('x-storage:read')")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-storage:read')")
     public Mono<ResponseEntity<Flux<DataBuffer>>> content(@PathVariable Long id) {
         // toEntityFlux keeps the storage response open until its bytes are written. Reading the body
         // inside exchangeToMono did not: the response was released first and images arrived empty.
