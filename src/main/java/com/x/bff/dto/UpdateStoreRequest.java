@@ -11,6 +11,7 @@ public record UpdateStoreRequest(
         @Size(max = 160, message = "Store name must not exceed 160 characters") String name,
         @Size(max = 64, message = "Store code must not exceed 64 characters") String code,
         String storeType,
+        @Pattern(regexp = "(?i)POS|ONLINE|BOTH", message = "Sales channel must be POS, ONLINE, or BOTH") String salesChannel,
         @Size(max = 255, message = "Address line 1 must not exceed 255 characters") String addressLine1,
         @Size(max = 255, message = "Address line 2 must not exceed 255 characters") String addressLine2,
         @Size(max = 255, message = "Landmark must not exceed 255 characters") String landmark,
@@ -36,8 +37,19 @@ public record UpdateStoreRequest(
                               String email, String website, BigDecimal latitude,
                               BigDecimal longitude, List<StoreImageRequest> images,
                               Integer status) {
-        this(name, code, "GENERAL_RETAIL", addressLine1, addressLine2, landmark,
+        this(name, code, "GENERAL_RETAIL", null, addressLine1, addressLine2, landmark,
              city, stateProvince, countryCode, postalCode, phone, alternatePhone,
              email, website, latitude, longitude, images, status, null, false);
+    }
+
+    public UpdateStoreRequest(String name, String code, String storeType, String addressLine1,
+                              String addressLine2, String landmark, String city, String stateProvince,
+                              String countryCode, String postalCode, String phone, String alternatePhone,
+                              String email, String website, BigDecimal latitude, BigDecimal longitude,
+                              List<StoreImageRequest> images, Integer status,
+                              StoreOpeningHours openingHours, Boolean clearOpeningHours) {
+        this(name, code, storeType, null, addressLine1, addressLine2, landmark, city, stateProvince,
+                countryCode, postalCode, phone, alternatePhone, email, website, latitude, longitude,
+                images, status, openingHours, clearOpeningHours);
     }
 }

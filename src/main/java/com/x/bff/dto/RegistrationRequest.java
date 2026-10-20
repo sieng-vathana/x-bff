@@ -29,6 +29,7 @@ public record RegistrationRequest(
         @NotBlank @Size(max = 255) String storeAddressLine1,
         @NotBlank @Size(max = 100) String storeCity,
         @NotBlank @Pattern(regexp = "[A-Za-z]{2}") String storeCountryCode,
+        @Pattern(regexp = "(?i)POS|ONLINE|BOTH") String storeSalesChannel,
         BigDecimal storeLatitude,
         BigDecimal storeLongitude,
         @jakarta.validation.constraints.Positive(message = "USD to KHR exchange rate must be positive")
@@ -36,4 +37,18 @@ public record RegistrationRequest(
         /** STARTER, BUSINESS or PRO; the merchant chooses it on the sign-up form. */
         @Pattern(regexp = "(?i)STARTER|BUSINESS|PRO") String plan,
         @Pattern(regexp = "(?i)MONTHLY|YEARLY") String billingCycle) {
+
+    /** Keeps callers using the pre-channel registration payload compatible. */
+    public RegistrationRequest(String fullName, String username, String password, String email, String phone,
+                               String businessName, String businessCode, String defaultCurrencyCode,
+                               String taxRegistrationNumber, String taxRegistrationLabel, Boolean pricesIncludeTax,
+                               String timeZone, Integer fiscalYearStartMonth, String storeName, String storeCode,
+                               String storeAddressLine1, String storeCity, String storeCountryCode,
+                               BigDecimal storeLatitude, BigDecimal storeLongitude, BigDecimal usdToKhrExchangeRate,
+                               String plan, String billingCycle) {
+        this(fullName, username, password, email, phone, businessName, businessCode, defaultCurrencyCode,
+                taxRegistrationNumber, taxRegistrationLabel, pricesIncludeTax, timeZone, fiscalYearStartMonth,
+                storeName, storeCode, storeAddressLine1, storeCity, storeCountryCode, null, storeLatitude,
+                storeLongitude, usdToKhrExchangeRate, plan, billingCycle);
+    }
 }

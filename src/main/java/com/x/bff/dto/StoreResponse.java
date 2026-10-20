@@ -35,7 +35,8 @@ public record StoreResponse(
         StoreOpeningHours openingHours,
         LocalDateTime suspendedAt,
         String suspensionReason,
-        Long suspendedByUserId) {
+        Long suspendedByUserId,
+        String salesChannel) {
 
     /** Suspended by the platform: no sales or marketplace listing until reinstated. */
     @com.fasterxml.jackson.annotation.JsonProperty("suspended")
@@ -55,7 +56,23 @@ public record StoreResponse(
         this(id, businessId, name, code, storeType, addressLine1, addressLine2, landmark, city, stateProvince,
              countryCode, postalCode, phone, alternatePhone, email, website, latitude, longitude, images, status,
              marketplaceStatus, marketplaceAppliedAt, marketplaceApprovedAt, rejectionReason, createdAt, updatedAt,
-             openingHours, null, null, null);
+             openingHours, null, null, null, "BOTH");
+    }
+
+    public StoreResponse(Long id, Long businessId, String name, String code, String storeType,
+                         String addressLine1, String addressLine2, String landmark, String city,
+                         String stateProvince, String countryCode, String postalCode, String phone,
+                         String alternatePhone, String email, String website, java.math.BigDecimal latitude,
+                         java.math.BigDecimal longitude, List<StoreImageResponse> images, Integer status,
+                         String marketplaceStatus, LocalDateTime marketplaceAppliedAt,
+                         LocalDateTime marketplaceApprovedAt, String rejectionReason,
+                         LocalDateTime createdAt, LocalDateTime updatedAt, StoreOpeningHours openingHours,
+                         LocalDateTime suspendedAt, String suspensionReason, Long suspendedByUserId) {
+        this(id, businessId, name, code, storeType, addressLine1, addressLine2, landmark, city,
+                stateProvince, countryCode, postalCode, phone, alternatePhone, email, website, latitude,
+                longitude, images, status, marketplaceStatus, marketplaceAppliedAt, marketplaceApprovedAt,
+                rejectionReason, createdAt, updatedAt, openingHours, suspendedAt, suspensionReason,
+                suspendedByUserId, "BOTH");
     }
 
     public StoreResponse(Long id, Long businessId, String name, String code,
@@ -68,6 +85,6 @@ public record StoreResponse(
         this(id, businessId, name, code, "GENERAL_RETAIL", addressLine1, addressLine2,
              landmark, city, stateProvince, countryCode, postalCode, phone, alternatePhone,
              email, website, latitude, longitude, images, status, "NOT_LISTED",
-             null, null, null, createdAt, updatedAt, null);
+             null, null, null, createdAt, updatedAt, null, null, null, null, "BOTH");
     }
 }

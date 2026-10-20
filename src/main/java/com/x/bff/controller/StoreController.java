@@ -172,7 +172,7 @@ public class StoreController {
             return Mono.just(request);
         }
         return storeImageUrlResolver.resolveRequests(request.images()).map(images -> new CreateStoreRequest(
-                request.businessId(), request.name(), request.code(), request.storeType(), request.addressLine1(), request.addressLine2(),
+                request.businessId(), request.name(), request.code(), request.storeType(), request.salesChannel(), request.addressLine1(), request.addressLine2(),
                 request.landmark(), request.city(), request.stateProvince(), request.countryCode(), request.postalCode(),
                 request.phone(), request.alternatePhone(), request.email(), request.website(), request.latitude(),
                 request.longitude(), images, request.openingHours()));
@@ -183,7 +183,7 @@ public class StoreController {
             return Mono.just(request);
         }
         return storeImageUrlResolver.resolveRequests(request.images()).map(images -> new UpdateStoreRequest(
-                request.name(), request.code(), request.storeType(), request.addressLine1(), request.addressLine2(), request.landmark(),
+                request.name(), request.code(), request.storeType(), request.salesChannel(), request.addressLine1(), request.addressLine2(), request.landmark(),
                 request.city(), request.stateProvince(), request.countryCode(), request.postalCode(), request.phone(),
                 request.alternatePhone(), request.email(), request.website(), request.latitude(), request.longitude(),
                 images, request.status(), request.openingHours(), request.clearOpeningHours()));

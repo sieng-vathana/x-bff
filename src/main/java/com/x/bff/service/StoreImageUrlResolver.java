@@ -60,7 +60,7 @@ public class StoreImageUrlResolver {
                         store.latitude(), store.longitude(), images, store.status(), store.marketplaceStatus(),
                         store.marketplaceAppliedAt(), store.marketplaceApprovedAt(), store.rejectionReason(),
                         store.createdAt(), store.updatedAt(), store.openingHours(),
-                        store.suspendedAt(), store.suspensionReason(), store.suspendedByUserId()));
+                        store.suspendedAt(), store.suspensionReason(), store.suspendedByUserId(), store.salesChannel()));
     }
 
     public Mono<PageResponse<StoreResponse>> resolvePage(PageResponse<StoreResponse> page) {

@@ -295,9 +295,10 @@ public class AuthenticationService {
     private Mono<StoreResponse> createStore(Long businessId, RegistrationRequest request) {
         return storeClient.post()
                 .bodyValue(new CreateStoreRequest(
-                        businessId, request.storeName(), request.storeCode(), request.storeAddressLine1(), null, null,
-                        request.storeCity(), null, request.storeCountryCode(), null, request.phone(), null,
-                        request.email(), null, request.storeLatitude(), request.storeLongitude(), List.of()))
+                        businessId, request.storeName(), request.storeCode(), "GENERAL_RETAIL", request.storeSalesChannel(),
+                        request.storeAddressLine1(), null, null, request.storeCity(), null, request.storeCountryCode(),
+                        null, request.phone(), null, request.email(), null, request.storeLatitude(),
+                        request.storeLongitude(), List.of(), null))
                 .retrieve()
                 .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
                 .map(ApiResponse::getData);
