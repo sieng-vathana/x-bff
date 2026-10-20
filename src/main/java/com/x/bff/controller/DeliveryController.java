@@ -1,8 +1,15 @@
 package com.x.bff.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.sharedlib.response.ApiResponse;
+import com.x.bff.dto.StoreResponse;
+import com.x.bff.dto.UserCredentialsResponse;
 import com.x.bff.service.ServiceClientFactory;
+import com.x.bff.service.UserServiceClient;
 import com.x.bff.utils.XUtil;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,23 +22,44 @@ import reactor.core.publisher.Mono;
 public class DeliveryController {
 
     private final WebClient deliveryClient;
+    private final WebClient storeClient;
+    private final UserServiceClient userServiceClient;
 
-    public DeliveryController(ServiceClientFactory clientFactory) {
+    public DeliveryController(ServiceClientFactory clientFactory, UserServiceClient userServiceClient) {
         this.deliveryClient = clientFactory.forService("delivery", "/api/v1/deliveries");
+        this.storeClient = clientFactory.forService("store", "/api/v1/stores");
+        this.userServiceClient = userServiceClient;
+    }
+
+    @GetMapping("/providers")
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:read')")
+    public Mono<ResponseEntity<?>> getProviders() {
+        return forward(deliveryClient.get().uri("/providers"));
+    }
+
+    @PutMapping("/providers")
+    @PreAuthorize("hasAuthority('platform:admin')")
+    public Mono<ResponseEntity<?>> updateProviders(@RequestBody JsonNode request) {
+        return forward(deliveryClient.put().uri("/providers")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request));
     }
 
     @GetMapping("/stores/{storeId}/config")
-    @PreAuthorize("hasAuthority('platform:admin')")
-    public Mono<ResponseEntity<?>> getStoreConfig(@PathVariable Long storeId) {
-        return forward(deliveryClient.get().uri("/stores/{storeId}/config", storeId));
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:read')")
+    public Mono<ResponseEntity<?>> getStoreConfig(@PathVariable Long storeId, Authentication authentication) {
+        return requireStoreAccess(storeId, authentication)
+                .then(forward(deliveryClient.get().uri("/stores/{storeId}/config", storeId)));
     }
 
     @PutMapping("/stores/{storeId}/config")
-    @PreAuthorize("hasAuthority('platform:admin')")
-    public Mono<ResponseEntity<?>> updateStoreConfig(@PathVariable Long storeId, @RequestBody JsonNode request) {
-        return forward(deliveryClient.put().uri("/stores/{storeId}/config", storeId)
+    @PreAuthorize("hasAuthority('platform:admin') or hasAuthority('x-store:update')")
+    public Mono<ResponseEntity<?>> updateStoreConfig(
+            @PathVariable Long storeId, @RequestBody JsonNode request, Authentication authentication) {
+        return requireStoreAccess(storeId, authentication)
+                .then(forward(deliveryClient.put().uri("/stores/{storeId}/config", storeId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(request));
+                .bodyValue(request)));
     }
 
     @PostMapping("/quotes")
@@ -106,5 +134,29 @@ public class DeliveryController {
         return request.exchangeToMono(response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")
                 .map(body -> XUtil.toJsonResponse(body, response.statusCode())));
+    }
+
+    private Mono<Void> requireStoreAccess(Long storeId, Authentication authentication) {
+        if (isPlatformAdmin(authentication)) return Mono.empty();
+        return storeClient.get().uri("/{id}", storeId)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<StoreResponse>>() {})
+                .map(ApiResponse::getData)
+                .switchIfEmpty(Mono.error(new AccessDeniedException("Store was not found or is not accessible")))
+                .flatMap(store -> userServiceClient.findByUsername(authentication.getName())
+                        .flatMap(user -> hasStoreAccess(user, store)
+                                ? Mono.empty()
+                                : Mono.error(new AccessDeniedException("User does not have access to this store"))))
+                .then();
+    }
+
+    private boolean hasStoreAccess(UserCredentialsResponse user, StoreResponse store) {
+        return (user.getStoreIds() != null && user.getStoreIds().contains(store.id()))
+                || (user.getBusinessIds() != null && user.getBusinessIds().contains(store.businessId()));
+    }
+
+    private boolean isPlatformAdmin(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority -> "platform:admin".equals(authority.getAuthority()));
     }
 }
