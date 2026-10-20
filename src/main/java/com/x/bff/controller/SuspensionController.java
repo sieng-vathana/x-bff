@@ -3,6 +3,10 @@ package com.x.bff.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sharedlib.response.ApiResponse;
 import com.x.bff.dto.UserCredentialsResponse;
+import com.x.bff.dto.BusinessResponse;
+import com.x.bff.dto.MerchantOwnerProfile;
+import com.x.bff.dto.MerchantProfileResponse;
+import com.x.bff.dto.StoreResponse;
 import com.x.bff.service.ServiceClientFactory;
 import com.x.bff.service.UserServiceClient;
 import com.x.bff.utils.XUtil;
@@ -43,6 +47,7 @@ public class SuspensionController {
 
     private final WebClient businessClient;
     private final WebClient storeClient;
+    private final WebClient userClient;
     private final WebClient telegramClient;
     private final WebClient userNoticeClient;
     private final UserServiceClient userServiceClient;
@@ -52,6 +57,7 @@ public class SuspensionController {
                                 @org.springframework.beans.factory.annotation.Value("${services.user.base-url:http://localhost:8081/internal/users}") String userBaseUrl) {
         this.businessClient = clientFactory.forService("business", "/api/v1/businesses");
         this.storeClient = clientFactory.forService("store", "/api/v1/stores");
+        this.userClient = clientFactory.forService("user", "");
         this.telegramClient = clientFactory.forService("business", "/internal/businesses");
         this.userNoticeClient = webClientBuilder.clone().baseUrl(userBaseUrl).build();
         this.userServiceClient = userServiceClient;
@@ -63,6 +69,27 @@ public class SuspensionController {
         return forward(businessClient.get().uri(uri -> uri.path("/admin")
                 .queryParamIfPresent("status", java.util.Optional.ofNullable(status))
                 .queryParamIfPresent("search", java.util.Optional.ofNullable(search)).build()));
+    }
+
+    /** Full review dossier for one merchant: account owner contact information and all registered stores. */
+    @GetMapping("/merchants/{id}/profile")
+    public Mono<ResponseEntity<?>> merchantProfile(@PathVariable Long id) {
+        return businessClient.get().uri("/{id}", id)
+                .retrieve()
+                .bodyToMono(new ParameterizedTypeReference<ApiResponse<BusinessResponse>>() {})
+                .map(ApiResponse::getData)
+                .flatMap(merchant -> Mono.zip(
+                        userClient.get().uri("/by-id/{id}", merchant.ownerUserId())
+                                .retrieve()
+                                .bodyToMono(new ParameterizedTypeReference<ApiResponse<MerchantOwnerProfile>>() {})
+                                .map(ApiResponse::getData),
+                        storeClient.get().uri(uri -> uri.path("/admin")
+                                        .queryParam("businessId", merchant.id()).build())
+                                .retrieve()
+                                .bodyToMono(new ParameterizedTypeReference<ApiResponse<java.util.List<StoreResponse>>>() {})
+                                .map(response -> response.getData() == null ? java.util.List.<StoreResponse>of() : response.getData()))
+                        .map(data -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
+                                new MerchantProfileResponse(merchant, data.getT1(), data.getT2())))));
     }
 
     @PostMapping("/merchants/{id}/suspension")
