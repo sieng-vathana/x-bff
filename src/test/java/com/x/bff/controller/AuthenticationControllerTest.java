@@ -35,6 +35,10 @@ class AuthenticationControllerTest {
     @MockBean
     private com.x.bff.plan.PlanService planService;
 
+    /** The realtime filter is a WebFilter too; its events are not under test here. */
+    @MockBean
+    private com.x.bff.realtime.RealtimePublisher realtimePublisher;
+
     @MockBean
     private AuthenticationService authenticationService;
 
