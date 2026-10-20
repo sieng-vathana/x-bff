@@ -25,4 +25,4 @@ services:
   storage:
     base-url: ${STORAGE_SERVICE_URL:http://169.58.46.185:8088}
   delivery:
-    base-url: ${DELIVERY_SERVICE_URL:http://169.58.46.185:8090}
+    base-url: ${DELIVERY_SERVICE_URL:http://x-delivery-service.x-platform.svc.cluster.local:8080}
