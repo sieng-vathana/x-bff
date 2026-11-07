@@ -6,7 +6,9 @@ import java.util.List;
 
 public record MarketplaceHomeResponse(
         PageResponse<MarketplaceProductView> products,
+        List<MarketplaceProductView> featuredProducts,
         List<MarketplaceCategoryResponse> categories,
+        PageResponse<MarketplaceStoreResponse> stores,
         AccountSummary account,
         FavoriteSummary favorites,
         CartSummary cart) {

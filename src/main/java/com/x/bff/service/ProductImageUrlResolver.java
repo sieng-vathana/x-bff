@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sharedlib.response.ApiResponse;
 import com.sharedlib.response.PageResponse;
 import com.x.bff.dto.MarketplaceProductResponse;
+import com.x.bff.dto.MarketplaceProductDetailResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -94,6 +95,38 @@ public class ProductImageUrlResolver {
                 .collectList()
                 .map(content -> new PageResponse<>(
                         content, page.page(), page.size(), page.totalElements(), page.totalPages(), page.hasNext()));
+    }
+
+    public Mono<MarketplaceProductDetailResponse> resolveMarketplaceDetail(
+            MarketplaceProductDetailResponse product) {
+        if (product == null) {
+            return Mono.empty();
+        }
+        Mono<String> thumbnail = resolveOptional(product.thumbnail());
+        Mono<List<String>> images = product.images() == null ? Mono.just(List.of())
+                : Flux.fromIterable(product.images()).concatMap(this::resolveOptional).collectList();
+        Mono<List<MarketplaceProductDetailResponse.Variant>> variants = product.variants() == null
+                ? Mono.just(List.of())
+                : Flux.fromIterable(product.variants()).concatMap(variant -> resolveOptional(variant.image())
+                        .map(image -> new MarketplaceProductDetailResponse.Variant(
+                                variant.variantId(), variant.name(), blankAsNull(image), variant.onlinePrice(),
+                                variant.compareAtPrice(), variant.quantity(), variant.inStock(), variant.attributes())))
+                        .collectList();
+        return Mono.zip(thumbnail, images, variants)
+                .map(tuple -> new MarketplaceProductDetailResponse(
+                        product.productId(), product.storeId(), product.productName(), product.shortName(),
+                        product.description(), blankAsNull(tuple.getT1()), product.categoryId(), product.categoryName(),
+                        product.currencyCode(), product.featured(), tuple.getT2().stream()
+                        .map(this::blankAsNull).filter(java.util.Objects::nonNull).toList(),
+                        tuple.getT3(), product.store()));
+    }
+
+    private Mono<String> resolveOptional(String imageUrl) {
+        return imageUrl == null || imageUrl.isBlank() ? Mono.just("") : resolve(imageUrl);
+    }
+
+    private String blankAsNull(String imageUrl) {
+        return imageUrl == null || imageUrl.isBlank() ? null : imageUrl;
     }
 
     private void collectProductImageFields(JsonNode root, List<ImageField> fields) {

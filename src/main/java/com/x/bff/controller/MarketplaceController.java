@@ -1,11 +1,20 @@
 package com.x.bff.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sharedlib.response.ApiResponse;
 import com.sharedlib.response.PageResponse;
+import com.x.bff.dto.MarketplaceCartItemRequest;
 import com.x.bff.dto.MarketplaceCategoryResponse;
+import com.x.bff.dto.MarketplaceCheckoutRequest;
+import com.x.bff.dto.MarketplaceDeliveryQuoteRequest;
+import com.x.bff.dto.MarketplaceDeliveryQuoteResponse;
+import com.x.bff.dto.MarketplaceFavoriteRequest;
+import com.x.bff.dto.MarketplaceFavoriteResponse;
 import com.x.bff.dto.MarketplaceHomeResponse;
+import com.x.bff.dto.MarketplaceProductDetailResponse;
 import com.x.bff.dto.MarketplaceProductResponse;
 import com.x.bff.dto.MarketplaceProductView;
+import com.x.bff.dto.MarketplaceQuantityRequest;
 import com.x.bff.dto.MarketplaceStoreResponse;
 import com.x.bff.dto.MarketplaceSummaryResponse;
 import com.x.bff.service.ServiceClientFactory;
@@ -24,7 +33,11 @@ import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,6 +48,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -48,13 +62,32 @@ public class MarketplaceController {
             new ParameterizedTypeReference<>() {};
     private static final ParameterizedTypeReference<ApiResponse<List<MarketplaceStoreResponse>>> STORES_TYPE =
             new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<PageResponse<MarketplaceStoreResponse>>> STORE_PAGE_TYPE =
+            new ParameterizedTypeReference<>() {};
     private static final ParameterizedTypeReference<ApiResponse<MarketplaceSummaryResponse>> SUMMARY_TYPE =
+            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<MarketplaceProductDetailResponse>> PRODUCT_DETAIL_TYPE =
+            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<MarketplaceStoreResponse>> STORE_TYPE =
+            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<List<MarketplaceDeliveryQuoteResponse>>> QUOTES_TYPE =
+            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<List<MarketplaceFavoriteResponse>>> FAVORITES_TYPE =
+            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<PageResponse<JsonNode>>> ORDER_PAGE_TYPE =
+            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<JsonNode>> ORDER_TYPE =
+            new ParameterizedTypeReference<>() {};
+    private static final ParameterizedTypeReference<ApiResponse<List<JsonNode>>> PAYMENT_LIST_TYPE =
             new ParameterizedTypeReference<>() {};
 
     private final WebClient productClient;
     private final WebClient storeClient;
     private final WebClient businessClient;
     private final WebClient customerClient;
+    private final WebClient deliveryClient;
+    private final WebClient orderClient;
+    private final WebClient paymentClient;
     private final UserServiceClient userServiceClient;
     private final ProductImageUrlResolver productImageUrlResolver;
     private final StoreImageUrlResolver storeImageUrlResolver;
@@ -68,20 +101,143 @@ public class MarketplaceController {
         this.storeClient = clientFactory.forService("store", "/api/v1/stores");
         this.businessClient = clientFactory.forService("business", "/api/v1/businesses");
         this.customerClient = clientFactory.forService("customer", "/internal/marketplace");
+        this.deliveryClient = clientFactory.forService("delivery", "/api/v1/deliveries");
+        this.orderClient = clientFactory.forService("order", "/api/v1/orders");
+        this.paymentClient = clientFactory.forService("payment", "/api/v1/payments");
         this.userServiceClient = userServiceClient;
         this.productImageUrlResolver = productImageUrlResolver;
         this.storeImageUrlResolver = storeImageUrlResolver;
     }
 
-    @GetMapping("/home")
-    public Mono<ResponseEntity<ApiResponse<MarketplaceHomeResponse>>> getHome(
+    @GetMapping("/categories")
+    public Mono<ResponseEntity<ApiResponse<PageResponse<MarketplaceCategoryResponse>>>> getCategories(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "100") @Min(1) @Max(100) int size) {
+        return productClient.get()
+                .uri(uri -> uri.path("/categories").queryParam("page", page).queryParam("size", size).build())
+                .retrieve()
+                .bodyToMono(CATEGORIES_TYPE)
+                .map(ResponseEntity::ok);
+    }
+
+    @GetMapping("/products")
+    public Mono<ResponseEntity<ApiResponse<PageResponse<MarketplaceProductView>>>> getProducts(
+            @RequestParam(required = false) @Size(max = 120) String search,
+            @RequestParam(required = false) @Positive Long categoryId,
+            @RequestParam(required = false) @Positive Long storeId,
+            @RequestParam(required = false) Boolean featuredOnly,
+            @RequestParam(required = false) @jakarta.validation.constraints.DecimalMin("0.00") BigDecimal minPrice,
+            @RequestParam(required = false) @jakarta.validation.constraints.DecimalMin("0.00") BigDecimal maxPrice,
+            @RequestParam(required = false) Boolean inStock,
+            @RequestParam(defaultValue = "newest") String sort,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "24") @Min(1) @Max(100) int size) {
+        if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0) {
+            return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "minPrice must be less than or equal to maxPrice"));
+        }
+        return productClient.get()
+                .uri(uri -> uri.path("/products")
+                        .queryParamIfPresent("search", Optional.ofNullable(search))
+                        .queryParamIfPresent("categoryId", Optional.ofNullable(categoryId))
+                        .queryParamIfPresent("storeId", Optional.ofNullable(storeId))
+                        .queryParamIfPresent("featuredOnly", Optional.ofNullable(featuredOnly))
+                        .queryParamIfPresent("minPrice", Optional.ofNullable(minPrice))
+                        .queryParamIfPresent("maxPrice", Optional.ofNullable(maxPrice))
+                        .queryParamIfPresent("inStock", Optional.ofNullable(inStock))
+                        .queryParam("sort", sort).queryParam("page", page).queryParam("size", size).build())
+                .retrieve()
+                .bodyToMono(PRODUCTS_TYPE)
+                .map(ApiResponse::getData)
+                .flatMap(this::enrichProductPage)
+                .map(result -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), result)));
+    }
+
+    @GetMapping("/products/{productId}")
+    public Mono<ResponseEntity<ApiResponse<MarketplaceProductDetailResponse>>> getProduct(
+            @PathVariable @Positive Long productId,
+            @RequestParam(required = false) @Positive Long storeId) {
+        return fetchProductDetail(productId, storeId)
+                .flatMap(product -> publicStore(product.storeId())
+                        .map(store -> new MarketplaceProductDetailResponse(
+                                product.productId(), product.storeId(), product.productName(), product.shortName(),
+                                product.description(), product.thumbnail(), product.categoryId(), product.categoryName(),
+                                product.currencyCode(), product.featured(), product.images(), product.variants(), store)))
+                .map(result -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), result)));
+    }
+
+    @GetMapping("/stores")
+    public Mono<ResponseEntity<ApiResponse<PageResponse<MarketplaceStoreResponse>>>> getStores(
             @RequestParam(required = false) @Size(max = 120) String search,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "24") @Min(1) @Max(100) int size) {
+        return storeClient.get()
+                .uri(uri -> uri.path("/public/directory").queryParam("page", page).queryParam("size", size)
+                        .queryParamIfPresent("search", Optional.ofNullable(search)).build())
+                .retrieve()
+                .bodyToMono(STORE_PAGE_TYPE)
+                .map(ApiResponse::getData)
+                .flatMap(this::enrichStorePage)
+                .map(result -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), result)));
+    }
+
+    @GetMapping("/stores/{storeId}")
+    public Mono<ResponseEntity<ApiResponse<MarketplaceStoreResponse>>> getStore(
+            @PathVariable @Positive Long storeId) {
+        return publicStore(storeId)
+                .map(store -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), store)));
+    }
+
+    @GetMapping("/stores/{storeId}/products")
+    public Mono<ResponseEntity<ApiResponse<PageResponse<MarketplaceProductView>>>> getStoreProducts(
+            @PathVariable @Positive Long storeId,
+            @RequestParam(required = false) @Size(max = 120) String search,
+            @RequestParam(required = false) @Positive Long categoryId,
+            @RequestParam(required = false) @jakarta.validation.constraints.DecimalMin("0.00") BigDecimal minPrice,
+            @RequestParam(required = false) @jakarta.validation.constraints.DecimalMin("0.00") BigDecimal maxPrice,
+            @RequestParam(required = false) Boolean inStock,
+            @RequestParam(defaultValue = "newest") String sort,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "24") @Min(1) @Max(100) int size) {
+        return publicStore(storeId).then(productClient.get()
+                .uri(uri -> uri.path("/products").queryParam("storeId", storeId)
+                        .queryParamIfPresent("search", Optional.ofNullable(search))
+                        .queryParamIfPresent("categoryId", Optional.ofNullable(categoryId))
+                        .queryParamIfPresent("minPrice", Optional.ofNullable(minPrice))
+                        .queryParamIfPresent("maxPrice", Optional.ofNullable(maxPrice))
+                        .queryParamIfPresent("inStock", Optional.ofNullable(inStock))
+                        .queryParam("sort", sort).queryParam("page", page).queryParam("size", size).build())
+                .retrieve().bodyToMono(PRODUCTS_TYPE).map(ApiResponse::getData)
+                .flatMap(this::enrichProductPage)
+                .map(result -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), result))));
+    }
+
+    @GetMapping("/home")
+    public Mono<ResponseEntity<ApiResponse<MarketplaceHomeResponse>>> getHome(
+            @RequestParam(required = false) @Size(max = 120) String search,
+            @RequestParam(required = false) @Positive Long categoryId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "24") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "0") @Min(0) int storePage,
+            @RequestParam(defaultValue = "24") @Min(1) @Max(100) int storeSize) {
         Mono<PageResponse<MarketplaceProductResponse>> products = productClient.get()
                 .uri(uri -> uri.path("/products")
                         .queryParam("page", page)
                         .queryParam("size", size)
+                        .queryParamIfPresent("categoryId", Optional.ofNullable(categoryId))
+                        .queryParamIfPresent("search", Optional.ofNullable(search))
+                        .build())
+                .retrieve()
+                .bodyToMono(PRODUCTS_TYPE)
+                .map(ApiResponse::getData)
+                .flatMap(productImageUrlResolver::resolveMarketplacePage);
+
+        Mono<PageResponse<MarketplaceProductResponse>> featuredProducts = productClient.get()
+                .uri(uri -> uri.path("/products")
+                        .queryParam("page", 0)
+                        .queryParam("size", 8)
+                        .queryParam("featuredOnly", true)
+                        .queryParamIfPresent("categoryId", Optional.ofNullable(categoryId))
                         .queryParamIfPresent("search", Optional.ofNullable(search))
                         .build())
                 .retrieve()
@@ -92,7 +248,7 @@ public class MarketplaceController {
         Mono<PageResponse<MarketplaceCategoryResponse>> categories = productClient.get()
                 .uri(uri -> uri.path("/categories")
                         .queryParam("page", 0)
-                        .queryParam("size", 24)
+                        .queryParam("size", 100)
                         .build())
                 .retrieve()
                 .bodyToMono(CATEGORIES_TYPE)
@@ -100,13 +256,28 @@ public class MarketplaceController {
 
         Mono<UserContext> user = currentUser().cache();
         Mono<MarketplaceSummaryResponse> summary = user.flatMap(this::loadSummary);
-        return Mono.zip(products, categories, user, summary)
-                .flatMap(tuple -> loadStores(tuple.getT1().content().stream()
-                                .map(MarketplaceProductResponse::storeId)
-                                .filter(id -> id != null)
-                                .distinct()
-                                .toList())
-                        .map(stores -> toResponse(tuple.getT1(), tuple.getT2(), tuple.getT3(), tuple.getT4(), stores)))
+        Mono<PageResponse<MarketplaceStoreResponse>> directory = storeClient.get()
+                .uri(uri -> uri.path("/public/directory")
+                        .queryParam("page", storePage)
+                        .queryParam("size", storeSize)
+                        .queryParamIfPresent("search", Optional.ofNullable(search))
+                        .build())
+                .retrieve()
+                .bodyToMono(STORE_PAGE_TYPE)
+                .map(ApiResponse::getData)
+                .flatMap(pageData -> withoutSuspendedMerchants(pageData.content())
+                        .flatMap(storeImageUrlResolver::resolveMarketplaceStores)
+                        .map(visible -> new PageResponse<>(visible, pageData.page(), pageData.size(),
+                                pageData.totalElements(), pageData.totalPages(), pageData.hasNext())));
+        return Mono.zip(products, featuredProducts, categories, user, summary, directory)
+                .flatMap(tuple -> loadStores(java.util.stream.Stream.concat(
+                                tuple.getT1().content().stream(), tuple.getT2().content().stream())
+                        .map(MarketplaceProductResponse::storeId)
+                        .filter(id -> id != null)
+                        .distinct()
+                        .toList())
+                        .map(stores -> toResponse(tuple.getT1(), tuple.getT2(), tuple.getT3(), tuple.getT4(),
+                                tuple.getT5(), stores, tuple.getT6())))
                 .map(home -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), home)));
     }
 
@@ -115,14 +286,158 @@ public class MarketplaceController {
             @PathVariable @Positive Long storeId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
-        return productClient.get()
+        return publicStore(storeId).then(productClient.get()
                 .uri(uri -> uri.path("/stores/{storeId}/categories")
                         .queryParam("page", page)
                         .queryParam("size", size)
                         .build(storeId))
                 .retrieve()
                 .bodyToMono(CATEGORIES_TYPE)
+                .map(ResponseEntity::ok));
+    }
+
+    @GetMapping("/cart")
+    public Mono<ResponseEntity<ApiResponse<MarketplaceHomeResponse.CartSummary>>> getCart() {
+        return currentCustomerId().flatMap(userId -> loadSummaryStrict(userId)
+                .map(summary -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), toCartSummary(summary)))));
+    }
+
+    @PostMapping("/cart/items")
+    public Mono<ResponseEntity<ApiResponse<MarketplaceHomeResponse.CartSummary>>> addCartItem(
+            @jakarta.validation.Valid @RequestBody MarketplaceCartItemRequest request) {
+        return currentCustomerId().flatMap(userId -> loadSummaryStrict(userId).flatMap(summary -> {
+                    com.x.bff.dto.MarketplaceCartItemResponse existing = summary.cartItems().stream()
+                            .filter(item -> item.variantId().equals(request.variantId()))
+                            .findFirst().orElse(null);
+                    if (existing != null && !existing.storeId().equals(request.storeId())) {
+                        return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                                HttpStatus.CONFLICT, "A variant cannot be in the cart for two stores"));
+                    }
+                    int previousQuantity = existing == null || existing.quantity() == null ? 0 : existing.quantity();
+                    int quantity = previousQuantity + request.quantity();
+                    if (quantity > 999) {
+                        return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                                HttpStatus.BAD_REQUEST, "Cart quantity cannot exceed 999"));
+                    }
+                    return upsertCartItem(userId, new MarketplaceCartItemRequest(
+                            request.productId(), request.storeId(), request.variantId(), quantity));
+                })
+                .map(summary -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), toCartSummary(summary)))));
+    }
+
+    @PutMapping("/cart/items/{variantId}")
+    public Mono<ResponseEntity<ApiResponse<MarketplaceHomeResponse.CartSummary>>> updateCartItem(
+            @PathVariable @Positive Long variantId,
+            @jakarta.validation.Valid @RequestBody MarketplaceQuantityRequest request) {
+        return currentCustomerId().flatMap(userId -> loadSummaryStrict(userId)
+                .flatMap(summary -> summary.cartItems().stream()
+                        .filter(item -> item.variantId().equals(variantId))
+                        .findFirst()
+                        .<Mono<MarketplaceSummaryResponse>>map(item -> upsertCartItem(userId,
+                                new MarketplaceCartItemRequest(item.productId(), item.storeId(), item.variantId(), request.quantity())))
+                        .orElseGet(() -> Mono.error(new org.springframework.web.server.ResponseStatusException(
+                                HttpStatus.NOT_FOUND, "Cart item not found"))))
+                .map(summary -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), toCartSummary(summary)))));
+    }
+
+    @DeleteMapping("/cart/items/{variantId}")
+    public Mono<ResponseEntity<ApiResponse<MarketplaceHomeResponse.CartSummary>>> removeCartItem(
+            @PathVariable @Positive Long variantId) {
+        return currentCustomerId().flatMap(userId -> customerClient.delete()
+                        .uri(uri -> uri.path("/cart/items/{variantId}").queryParam("userId", userId).build(variantId))
+                        .retrieve().toBodilessEntity()
+                        .then(loadSummaryStrict(userId)))
+                .map(summary -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), toCartSummary(summary))));
+    }
+
+    @GetMapping("/favorites")
+    public Mono<ResponseEntity<ApiResponse<List<MarketplaceFavoriteResponse>>>> getFavorites() {
+        return currentCustomerId().flatMap(userId -> customerClient.get()
+                        .uri(uri -> uri.path("/favorites").queryParam("userId", userId).build())
+                        .retrieve().bodyToMono(FAVORITES_TYPE).map(ApiResponse::getData))
+                .map(favorites -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), favorites)));
+    }
+
+    @PostMapping("/favorites")
+    public Mono<ResponseEntity<ApiResponse<List<MarketplaceFavoriteResponse>>>> addFavorite(
+            @jakarta.validation.Valid @RequestBody MarketplaceFavoriteRequest request) {
+        return currentCustomerId().flatMap(userId -> fetchProductDetail(request.productId(), request.storeId())
+                        .flatMap(product -> publicStore(product.storeId()).then(customerClient.post()
+                                .uri(uri -> uri.path("/favorites")
+                                        .queryParam("userId", userId).queryParam("productId", product.productId())
+                                        .queryParam("storeId", product.storeId()).build())
+                                .retrieve().toBodilessEntity()
+                                .then(loadFavorites(userId)))))
+                .map(favorites -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), favorites)));
+    }
+
+    @DeleteMapping("/favorites/{productId}")
+    public Mono<ResponseEntity<Void>> removeFavorite(@PathVariable @Positive Long productId) {
+        return currentCustomerId().flatMap(userId -> customerClient.delete()
+                        .uri(uri -> uri.path("/favorites/{productId}").queryParam("userId", userId).build(productId))
+                        .retrieve().toBodilessEntity())
+                .map(ignored -> ResponseEntity.noContent().<Void>build());
+    }
+
+    @PostMapping("/checkout/delivery-quotes")
+    public Mono<ResponseEntity<ApiResponse<List<MarketplaceDeliveryQuoteResponse>>>> createDeliveryQuotes(
+            @jakarta.validation.Valid @RequestBody MarketplaceDeliveryQuoteRequest request) {
+        return currentCustomerId().then(publicStore(request.storeId()).then(deliveryClient.post().uri("/quotes")
+                        .bodyValue(request).retrieve().bodyToMono(QUOTES_TYPE))
+                .map(response -> ResponseEntity.status(HttpStatus.CREATED).body(response)));
+    }
+
+    @PostMapping("/checkout/orders")
+    public Mono<ResponseEntity<ApiResponse<JsonNode>>> checkout(
+            @jakarta.validation.Valid @RequestBody MarketplaceCheckoutRequest request) {
+        return currentCustomerId().flatMap(userId -> createCheckout(userId, request));
+    }
+
+    @GetMapping("/orders")
+    public Mono<ResponseEntity<ApiResponse<PageResponse<JsonNode>>>> getCustomerOrders(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return currentCustomerId().flatMap(userId -> orderClient.get()
+                        .uri(uri -> uri.path("/customer/{customerId}").queryParam("page", page).queryParam("size", size).build(userId))
+                        .retrieve().bodyToMono(ORDER_PAGE_TYPE))
                 .map(ResponseEntity::ok);
+    }
+
+    @GetMapping("/orders/{orderId}")
+    public Mono<ResponseEntity<ApiResponse<JsonNode>>> getCustomerOrder(@PathVariable @Positive Long orderId) {
+        return currentCustomerId().flatMap(userId -> orderClient.get()
+                        .uri("/customer/{customerId}/{orderId}", userId, orderId)
+                        .retrieve().bodyToMono(ORDER_TYPE))
+                .map(ResponseEntity::ok);
+    }
+
+    @GetMapping("/orders/{orderId}/payments")
+    public Mono<ResponseEntity<ApiResponse<List<JsonNode>>>> getOrderPayments(@PathVariable @Positive Long orderId) {
+        return currentCustomerId().flatMap(userId -> verifyCustomerOrder(userId, orderId)
+                        .then(paymentClient.get().uri(uri -> uri.queryParam("orderId", orderId).build())
+                                .retrieve().bodyToMono(PAYMENT_LIST_TYPE)))
+                .map(ResponseEntity::ok);
+    }
+
+    @PostMapping("/orders/{orderId}/payment/qr")
+    public Mono<ResponseEntity<ApiResponse<JsonNode>>> createOrderQrPayment(@PathVariable @Positive Long orderId) {
+        return currentCustomerId().flatMap(userId -> verifyCustomerOrder(userId, orderId).flatMap(order -> {
+            if (!"UNPAID".equals(order.path("paymentStatus").asText())) {
+                return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.CONFLICT, "This order is not awaiting QR payment"));
+            }
+            String currency = order.path("currencyCode").asText("");
+            if (!"USD".equalsIgnoreCase(currency)) {
+                return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "QR checkout currently supports USD orders only"));
+            }
+            QrPaymentPayload payload = new QrPaymentPayload(
+                    orderId, order.path("businessId").asLong(), order.path("storeId").asLong(),
+                    order.path("grandTotal").decimalValue(), currency,
+                    "marketplace-qr-" + userId + "-" + orderId,
+                    "Marketplace order " + order.path("orderNo").asText(), null);
+            return paymentClient.post().uri("/qr").bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE);
+        })).map(ResponseEntity::ok);
     }
 
     private Mono<UserContext> currentUser() {
@@ -149,6 +464,162 @@ public class MarketplaceController {
                 .bodyToMono(SUMMARY_TYPE)
                 .map(ApiResponse::getData)
                 .onErrorReturn(emptySummary());
+    }
+
+    private Mono<Long> currentCustomerId() {
+        return currentUser().flatMap(user -> user.id() == null
+                ? Mono.error(new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED, "A customer account is required"))
+                : Mono.just(user.id()));
+    }
+
+    private Mono<MarketplaceSummaryResponse> loadSummaryStrict(Long userId) {
+        return customerClient.get()
+                .uri(uri -> uri.path("/summary").queryParam("userId", userId).build())
+                .retrieve().bodyToMono(SUMMARY_TYPE)
+                .map(ApiResponse::getData)
+                .switchIfEmpty(Mono.just(emptySummary()));
+    }
+
+    private Mono<JsonNode> verifyCustomerOrder(Long userId, Long orderId) {
+        return orderClient.get()
+                .uri("/customer/{customerId}/{orderId}", userId, orderId)
+                .retrieve().bodyToMono(ORDER_TYPE)
+                .map(ApiResponse::getData)
+                .filter(order -> order.path("customerId").asLong(-1) == userId
+                        && "ONLINE".equals(order.path("orderChannel").asText()))
+                .switchIfEmpty(Mono.error(new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Order not found")));
+    }
+
+    private Mono<List<MarketplaceFavoriteResponse>> loadFavorites(Long userId) {
+        return customerClient.get()
+                .uri(uri -> uri.path("/favorites").queryParam("userId", userId).build())
+                .retrieve().bodyToMono(FAVORITES_TYPE)
+                .map(ApiResponse::getData)
+                .defaultIfEmpty(List.of());
+    }
+
+    private Mono<MarketplaceSummaryResponse> upsertCartItem(Long userId, MarketplaceCartItemRequest request) {
+        return fetchProductDetail(request.productId(), request.storeId())
+                .flatMap(product -> publicStore(product.storeId()).then(Mono.defer(() -> {
+                    MarketplaceProductDetailResponse.Variant variant = product.variants().stream()
+                            .filter(candidate -> candidate.variantId().equals(request.variantId()))
+                            .findFirst()
+                            .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                                    HttpStatus.BAD_REQUEST, "Variant is not available for this product"));
+                    if (!variant.inStock() || (variant.quantity() != null && request.quantity() > variant.quantity())) {
+                        return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                                HttpStatus.CONFLICT, "Requested quantity is not currently available"));
+                    }
+                    return loadSummaryStrict(userId).flatMap(summary -> {
+                        boolean mixedCurrency = summary.cartItems().stream()
+                                .map(com.x.bff.dto.MarketplaceCartItemResponse::currencyCode)
+                                .filter(java.util.Objects::nonNull)
+                                .anyMatch(currency -> !currency.equalsIgnoreCase(product.currencyCode()));
+                        if (mixedCurrency) {
+                            return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                                    HttpStatus.CONFLICT, "A cart can contain products in one currency only"));
+                        }
+                        CustomerCartItemPayload payload = new CustomerCartItemPayload(
+                                product.productId(), product.storeId(), variant.variantId(), product.productName(),
+                                product.thumbnail(), variant.onlinePrice(), product.currencyCode(), request.quantity());
+                        return customerClient.put()
+                                .uri(uri -> uri.path("/cart/items").queryParam("userId", userId).build())
+                                .bodyValue(payload).retrieve().toBodilessEntity()
+                                .then(loadSummaryStrict(userId));
+                    });
+                })));
+    }
+
+    private Mono<MarketplaceProductDetailResponse> fetchProductDetail(Long productId, Long storeId) {
+        return productClient.get()
+                .uri(uri -> uri.path("/products/{productId}")
+                        .queryParamIfPresent("storeId", Optional.ofNullable(storeId))
+                        .build(productId))
+                .retrieve().bodyToMono(PRODUCT_DETAIL_TYPE)
+                .map(ApiResponse::getData)
+                .flatMap(productImageUrlResolver::resolveMarketplaceDetail);
+    }
+
+    private Mono<MarketplaceStoreResponse> publicStore(Long storeId) {
+        return storeClient.get()
+                .uri("/public/{id}", storeId)
+                .retrieve().bodyToMono(STORE_TYPE)
+                .map(ApiResponse::getData)
+                .flatMap(store -> withoutSuspendedMerchants(List.of(store)))
+                .flatMap(stores -> stores.isEmpty()
+                        ? Mono.error(new org.springframework.web.server.ResponseStatusException(
+                                HttpStatus.NOT_FOUND, "Marketplace store not found"))
+                        : storeImageUrlResolver.resolveMarketplaceStores(stores).map(items -> items.get(0)));
+    }
+
+    private Mono<PageResponse<MarketplaceProductView>> enrichProductPage(
+            PageResponse<MarketplaceProductResponse> page) {
+        return productImageUrlResolver.resolveMarketplacePage(page)
+                .flatMap(resolved -> loadStores(resolved.content().stream()
+                                .map(MarketplaceProductResponse::storeId).filter(java.util.Objects::nonNull).distinct().toList())
+                        .map(stores -> toProductViews(resolved, stores.stream().collect(Collectors.toMap(
+                                MarketplaceStoreResponse::id, Function.identity(), (left, right) -> left)))));
+    }
+
+    private Mono<PageResponse<MarketplaceStoreResponse>> enrichStorePage(
+            PageResponse<MarketplaceStoreResponse> page) {
+        return withoutSuspendedMerchants(page.content())
+                .flatMap(storeImageUrlResolver::resolveMarketplaceStores)
+                .map(visible -> new PageResponse<>(visible, page.page(), page.size(), page.totalElements(),
+                        page.totalPages(), page.hasNext()));
+    }
+
+    private MarketplaceHomeResponse.CartSummary toCartSummary(MarketplaceSummaryResponse summary) {
+        return new MarketplaceHomeResponse.CartSummary(
+                summary.cartItemCount(), summary.cartSubtotal(), summary.cartCurrency(), summary.cartItems());
+    }
+
+    private Mono<ResponseEntity<ApiResponse<JsonNode>>> createCheckout(
+            Long userId, MarketplaceCheckoutRequest request) {
+        if (!"CUSTOMER_PICKUP".equals(request.fulfillmentType())
+                && (request.deliveryQuoteId() == null || request.deliveryAddress() == null)) {
+            return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Delivery quote and address are required for delivery"));
+        }
+        return loadSummaryStrict(userId).flatMap(summary -> {
+            List<com.x.bff.dto.MarketplaceCartItemResponse> cartItems = summary.cartItems() == null ? List.of()
+                    : summary.cartItems().stream().filter(item -> request.storeId().equals(item.storeId())).toList();
+            if (cartItems.isEmpty()) {
+                return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.CONFLICT, "The cart has no items for this store"));
+            }
+            Set<String> currencies = cartItems.stream().map(com.x.bff.dto.MarketplaceCartItemResponse::currencyCode)
+                    .filter(java.util.Objects::nonNull).map(code -> code.toUpperCase(java.util.Locale.ROOT))
+                    .collect(Collectors.toSet());
+            if (currencies.size() != 1) {
+                return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.CONFLICT, "Cart items for a store must use one currency"));
+            }
+            if ("QR".equals(request.paymentType()) && !"USD".equalsIgnoreCase(currencies.iterator().next())) {
+                return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "QR checkout currently supports USD orders only"));
+            }
+            return publicStore(request.storeId()).flatMap(store -> {
+                if (store.businessId() == null) {
+                    return Mono.error(new org.springframework.web.server.ResponseStatusException(
+                            HttpStatus.CONFLICT, "Store is missing its business account"));
+                }
+                List<OnlineOrderItemPayload> items = cartItems.stream()
+                        .map(item -> new OnlineOrderItemPayload(item.variantId(), item.quantity())).toList();
+                String key = "marketplace-" + userId + "-" + request.idempotencyKey();
+                OnlineOrderPayload payload = new OnlineOrderPayload(
+                        store.businessId(), request.storeId(), userId, currencies.iterator().next(),
+                        request.fulfillmentType(), request.paymentType(), request.deliveryQuoteId(),
+                        request.deliveryAddress(), request.discountCode(), null, request.note(), key, items);
+                return orderClient.post().uri("/online").bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE)
+                        .flatMap(order -> customerClient.delete()
+                                .uri(uri -> uri.path("/cart/stores/{storeId}").queryParam("userId", userId).build(request.storeId()))
+                                .retrieve().toBodilessEntity().onErrorResume(error -> Mono.empty())
+                                .thenReturn(ResponseEntity.status(HttpStatus.CREATED).body(order)));
+            });
+        });
     }
 
     private Mono<List<MarketplaceStoreResponse>> loadStores(List<Long> ids) {
@@ -192,24 +663,21 @@ public class MarketplaceController {
 
     private MarketplaceHomeResponse toResponse(
             PageResponse<MarketplaceProductResponse> products,
+            PageResponse<MarketplaceProductResponse> featuredProducts,
             PageResponse<MarketplaceCategoryResponse> categories,
             UserContext user,
             MarketplaceSummaryResponse summary,
-            List<MarketplaceStoreResponse> stores) {
+            List<MarketplaceStoreResponse> stores,
+            PageResponse<MarketplaceStoreResponse> directory) {
         Map<Long, MarketplaceStoreResponse> storesById = stores.stream()
                 .collect(Collectors.toMap(MarketplaceStoreResponse::id, Function.identity(), (left, right) -> left));
-        PageResponse<MarketplaceProductView> productViews = new PageResponse<>(
-                products.content().stream()
-                        .filter(product -> storesById.containsKey(product.storeId()))
-                        .map(product -> new MarketplaceProductView(
-                        product.productId(), product.productName(), product.shortName(), product.thumbnail(),
-                        product.description(), product.categoryId(), product.categoryName(), product.currencyCode(),
-                        product.onlinePrice(), product.compareAtPrice(), product.quantity(), product.featured(),
-                        storesById.get(product.storeId()))).toList(),
-                products.page(), products.size(), products.totalElements(), products.totalPages(), products.hasNext());
+        PageResponse<MarketplaceProductView> productViews = toProductViews(products, storesById);
+        List<MarketplaceProductView> featuredProductViews = toProductViews(featuredProducts, storesById).content();
         return new MarketplaceHomeResponse(
                 productViews,
+                featuredProductViews,
                 categories.content(),
+                directory,
                 new MarketplaceHomeResponse.AccountSummary(
                         user.authenticated(), user.id(), user.username(),
                         summary != null && summary.customer() != null
@@ -226,10 +694,60 @@ public class MarketplaceController {
                         summary == null ? List.of() : summary.cartItems()));
     }
 
+    private PageResponse<MarketplaceProductView> toProductViews(
+            PageResponse<MarketplaceProductResponse> products,
+            Map<Long, MarketplaceStoreResponse> storesById) {
+        return new PageResponse<>(
+                products.content().stream()
+                        .filter(product -> storesById.containsKey(product.storeId()))
+                        .map(product -> new MarketplaceProductView(
+                                product.productId(), product.productName(), product.shortName(), product.thumbnail(),
+                                product.description(), product.categoryId(), product.categoryName(), product.currencyCode(),
+                                product.onlinePrice(), product.compareAtPrice(), product.quantity(), product.featured(),
+                                storesById.get(product.storeId())))
+                        .toList(),
+                products.page(), products.size(), products.totalElements(), products.totalPages(), products.hasNext());
+    }
+
     private MarketplaceSummaryResponse emptySummary() {
         return new MarketplaceSummaryResponse(null, List.of(), 0, 0, BigDecimal.ZERO, null, List.of());
     }
 
     private record UserContext(Long id, String username, String fullName, String email, boolean authenticated) {
+    }
+
+    private record CustomerCartItemPayload(
+            Long productId, Long storeId, Long variantId, String productName, String thumbnail,
+            BigDecimal unitPrice, String currencyCode, Integer quantity) {
+    }
+
+    private record OnlineOrderItemPayload(Long variantId, Integer quantity) {
+    }
+
+    private record OnlineOrderPayload(
+            Long businessId,
+            Long storeId,
+            Long customerId,
+            String currencyCode,
+            String fulfillmentType,
+            String paymentType,
+            Long deliveryQuoteId,
+            MarketplaceCheckoutRequest.DeliveryAddress deliveryAddress,
+            String discountCode,
+            BigDecimal taxRate,
+            String note,
+            String idempotencyKey,
+            List<OnlineOrderItemPayload> items) {
+    }
+
+    private record QrPaymentPayload(
+            Long orderId,
+            Long businessId,
+            Long storeId,
+            BigDecimal amount,
+            String currencyCode,
+            String idempotencyKey,
+            String note,
+            Long cashierId) {
     }
 }
