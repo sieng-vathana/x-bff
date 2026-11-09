@@ -52,6 +52,7 @@ public class SecurityConfig {
                                 "/api/v1/marketplace/products/**",
                                 "/api/v1/marketplace/stores",
                                 "/api/v1/marketplace/stores/**",
+                                "/api/v1/marketplace/images/**",
                                 "/api/v1/plans",
                                 "/api/v1/payments/khqrpay/webhook")
                         .permitAll()

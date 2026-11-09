@@ -26,7 +26,7 @@ class ProductImageUrlResolverTest {
                 {"status":1,"data":{"content":[{"thumbnail":"https://bucket.s3.ap-southeast-1.amazonaws.com/media/old.webp?X-Amz-Expires=86400","variants":[{"image":"/api/v1/files/1/content"}],"images":[{"imageUrl":"https://bucket.s3.ap-southeast-1.amazonaws.com/media/old.webp?X-Amz-Expires=86400"}]}]}}
                 """;
 
-        StepVerifier.create(new ProductImageUrlResolver(clientFactory, new ObjectMapper()).resolveResponse(response))
+        StepVerifier.create(new ProductImageUrlResolver(clientFactory, new ObjectMapper(), new MarketplaceImageSigner("test-secret")).resolveResponse(response))
                 .assertNext(resolved -> {
                     org.junit.jupiter.api.Assertions.assertEquals(3, count(resolved, "fresh.webp"));
                     org.junit.jupiter.api.Assertions.assertFalse(resolved.contains("old.webp"));

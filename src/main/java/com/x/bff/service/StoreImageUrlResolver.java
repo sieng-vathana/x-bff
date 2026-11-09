@@ -27,10 +27,12 @@ public class StoreImageUrlResolver {
 
     private final WebClient storageClient;
     private final WebClient internalStorageClient;
+    private final MarketplaceImageSigner imageSigner;
 
-    public StoreImageUrlResolver(ServiceClientFactory clientFactory) {
+    public StoreImageUrlResolver(ServiceClientFactory clientFactory, MarketplaceImageSigner imageSigner) {
         this.storageClient = clientFactory.forService("storage", "/api/v1/files");
         this.internalStorageClient = clientFactory.forService("storage", "/internal/files");
+        this.imageSigner = imageSigner;
     }
 
     public Mono<List<StoreImageRequest>> resolveRequests(List<StoreImageRequest> images) {
@@ -86,7 +88,7 @@ public class StoreImageUrlResolver {
                 .concatMap(store -> resolve(store.image())
                         .map(file -> new MarketplaceStoreResponse(
                                 store.id(), store.name(), store.code(), store.storeType(), store.city(), store.countryCode(),
-                                file.url(), store.openingHours(), store.businessId())))
+                                imageSigner.publicUrl(file.url()), store.openingHours(), store.businessId())))
                 .collectList();
     }
 

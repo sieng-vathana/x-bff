@@ -34,11 +34,14 @@ public class ProductImageUrlResolver {
     private final WebClient storageClient;
     private final WebClient internalStorageClient;
     private final ObjectMapper objectMapper;
+    private final MarketplaceImageSigner imageSigner;
 
-    public ProductImageUrlResolver(ServiceClientFactory clientFactory, ObjectMapper objectMapper) {
+    public ProductImageUrlResolver(ServiceClientFactory clientFactory, ObjectMapper objectMapper,
+                                   MarketplaceImageSigner imageSigner) {
         this.storageClient = clientFactory.forService("storage", "/api/v1/files");
         this.internalStorageClient = clientFactory.forService("storage", "/internal/files");
         this.objectMapper = objectMapper;
+        this.imageSigner = imageSigner;
     }
 
     /**
@@ -85,6 +88,7 @@ public class ProductImageUrlResolver {
                         return Mono.just(product);
                     }
                     return resolve(product.thumbnail())
+                            .map(imageSigner::publicUrl)
                             .map(thumbnail -> new MarketplaceProductResponse(
                                     product.productId(), product.storeId(), product.productName(), product.shortName(),
                                     thumbnail, product.description(), product.categoryId(), product.categoryName(),
@@ -102,14 +106,15 @@ public class ProductImageUrlResolver {
         if (product == null) {
             return Mono.empty();
         }
-        Mono<String> thumbnail = resolveOptional(product.thumbnail());
+        Mono<String> thumbnail = resolveOptional(product.thumbnail()).map(imageSigner::publicUrl);
         Mono<List<String>> images = product.images() == null ? Mono.just(List.of())
-                : Flux.fromIterable(product.images()).concatMap(this::resolveOptional).collectList();
+                : Flux.fromIterable(product.images()).concatMap(this::resolveOptional)
+                        .map(imageSigner::publicUrl).collectList();
         Mono<List<MarketplaceProductDetailResponse.Variant>> variants = product.variants() == null
                 ? Mono.just(List.of())
                 : Flux.fromIterable(product.variants()).concatMap(variant -> resolveOptional(variant.image())
                         .map(image -> new MarketplaceProductDetailResponse.Variant(
-                                variant.variantId(), variant.name(), blankAsNull(image), variant.onlinePrice(),
+                                variant.variantId(), variant.name(), imageSigner.publicUrl(blankAsNull(image)), variant.onlinePrice(),
                                 variant.compareAtPrice(), variant.quantity(), variant.inStock(), variant.attributes())))
                         .collectList();
         return Mono.zip(thumbnail, images, variants)

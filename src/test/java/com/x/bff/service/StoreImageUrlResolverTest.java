@@ -38,7 +38,7 @@ class StoreImageUrlResolverTest {
                 null, null, null, null, null, null, null,
                 List.of(new StoreImageResponse(1L, "/api/v1/files/1/content", null, true, 0)), 1, null, null);
 
-        StepVerifier.create(new StoreImageUrlResolver(clientFactory).resolveResponse(store))
+        StepVerifier.create(new StoreImageUrlResolver(clientFactory, new MarketplaceImageSigner("test-secret")).resolveResponse(store))
                 .assertNext(resolved -> {
                     org.junit.jupiter.api.Assertions.assertEquals(
                             "https://bucket.s3.ap-southeast-1.amazonaws.com/media/store.webp?signature=abc",
@@ -74,7 +74,7 @@ class StoreImageUrlResolverTest {
                         "https://bucket.s3.ap-southeast-1.amazonaws.com/media/store.webp", null, true, 0)),
                 1, null, null);
 
-        StepVerifier.create(new StoreImageUrlResolver(clientFactory).resolveResponse(store))
+        StepVerifier.create(new StoreImageUrlResolver(clientFactory, new MarketplaceImageSigner("test-secret")).resolveResponse(store))
                 .assertNext(resolved -> {
                     org.junit.jupiter.api.Assertions.assertTrue(
                             resolved.images().get(0).imageUrl().contains("X-Amz-Signature=fresh"));
@@ -101,7 +101,7 @@ class StoreImageUrlResolverTest {
         MarketplaceStoreResponse store = new MarketplaceStoreResponse(
                 2L, "Linux", "MAIN", "Phnom Penh", "KH", "/api/v1/files/1/content");
 
-        StepVerifier.create(new StoreImageUrlResolver(clientFactory)
+        StepVerifier.create(new StoreImageUrlResolver(clientFactory, new MarketplaceImageSigner("test-secret"))
                         .resolveMarketplaceStores(List.of(store)))
                 .assertNext(resolved -> org.junit.jupiter.api.Assertions.assertEquals(
                         "https://bucket.s3.ap-southeast-1.amazonaws.com/media/store.webp?signature=abc",
