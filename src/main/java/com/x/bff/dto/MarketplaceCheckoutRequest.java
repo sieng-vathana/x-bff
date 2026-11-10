@@ -19,7 +19,10 @@ public record MarketplaceCheckoutRequest(
         @Valid DeliveryAddress deliveryAddress,
         @Pattern(regexp = "[A-Za-z0-9_-]{2,64}") String discountCode,
         @Size(max = 500) String note,
-        @NotBlank @Size(min = 8, max = 64) String idempotencyKey) {
+        @NotBlank @Size(min = 8, max = 64) String idempotencyKey,
+        /** Optional: who the store calls about this order (used for pickup orders). */
+        @Size(max = 160) String contactName,
+        @Size(max = 32) String contactPhone) {
 
     public record DeliveryAddress(
             @NotBlank @Size(max = 160) String receiverName,

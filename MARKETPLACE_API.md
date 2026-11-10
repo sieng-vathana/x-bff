@@ -215,6 +215,26 @@ Request example:
 
 For pickup, `deliveryQuoteId` and `deliveryAddress` may be omitted. For delivery, both are required. The idempotency key is scoped to the signed-in customer.
 
+## Guest checkout (no account)
+
+Shoppers can buy without signing in. The cart is kept in the browser and sent with the order. All routes below are public; the buyer's contact name and phone are required for both delivery and pickup so the store can reach them.
+
+### `POST /guest/checkout/delivery-quotes`
+
+Same request and response as `POST /checkout/delivery-quotes`, without sign-in.
+
+### `POST /guest/checkout/orders`
+
+Same fields as `POST /checkout/orders`, plus `items` (`productId`, `variantId`, `quantity`; 1–50 lines), `contactName` and `contactPhone`. The BFF checks each variant against the store's current catalog and stock; the order service recalculates prices and reserves stock.
+
+Response `data`: `{ "order": { …order… }, "guestToken": "…" }`. Keep the token: it is the only way to open the order again. Tokens are valid for 30 days.
+
+### `GET /guest/orders/{orderId}`, `GET /guest/orders/{orderId}/payments`, `POST /guest/orders/{orderId}/payment/qr`
+
+Same as the signed-in order routes. Send the token in the `X-Guest-Order-Token` header. A wrong or expired token returns 404.
+
+Signed-in checkout also accepts optional `contactName` and `contactPhone`, stored on the order for the store to call.
+
 ## Orders and payments
 
 All routes below require sign-in. Order results are scoped to the signed-in customer; another customer's order is returned as not found.
@@ -244,5 +264,5 @@ Creates or reuses a QR payment for an unpaid order owned by the customer. The co
 5. For delivery, request quotes, select one, then create an order for that store.
 6. For QR payment, call `POST /orders/{orderId}/payment/qr` after order creation.
 
-The backend routes are implemented. The `market-ui` frontend has not yet been wired to call them.
+`market-ui` calls these routes: signed-in shoppers use the cart routes, guests use the `/guest` routes.
 

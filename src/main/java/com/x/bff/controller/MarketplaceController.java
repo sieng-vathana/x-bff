@@ -10,6 +10,8 @@ import com.x.bff.dto.MarketplaceDeliveryQuoteRequest;
 import com.x.bff.dto.MarketplaceDeliveryQuoteResponse;
 import com.x.bff.dto.MarketplaceFavoriteRequest;
 import com.x.bff.dto.MarketplaceFavoriteResponse;
+import com.x.bff.dto.MarketplaceGuestCheckoutRequest;
+import com.x.bff.dto.MarketplaceGuestOrderResponse;
 import com.x.bff.dto.MarketplaceHomeResponse;
 import com.x.bff.dto.MarketplaceProductDetailResponse;
 import com.x.bff.dto.MarketplaceProductResponse;
@@ -17,6 +19,7 @@ import com.x.bff.dto.MarketplaceProductView;
 import com.x.bff.dto.MarketplaceQuantityRequest;
 import com.x.bff.dto.MarketplaceStoreResponse;
 import com.x.bff.dto.MarketplaceSummaryResponse;
+import com.x.bff.service.GuestOrderTokens;
 import com.x.bff.service.ServiceClientFactory;
 import com.x.bff.service.ProductImageUrlResolver;
 import com.x.bff.service.StoreImageUrlResolver;
@@ -38,14 +41,25 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.server.ResponseStatusException;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -56,6 +70,9 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/v1/marketplace")
 @Validated
 public class MarketplaceController {
+    /** Header carrying the access token a guest got back from checkout. */
+    public static final String GUEST_TOKEN_HEADER = "X-Guest-Order-Token";
+
     private static final ParameterizedTypeReference<ApiResponse<PageResponse<MarketplaceProductResponse>>> PRODUCTS_TYPE =
             new ParameterizedTypeReference<>() {};
     private static final ParameterizedTypeReference<ApiResponse<PageResponse<MarketplaceCategoryResponse>>> CATEGORIES_TYPE =
@@ -91,12 +108,14 @@ public class MarketplaceController {
     private final UserServiceClient userServiceClient;
     private final ProductImageUrlResolver productImageUrlResolver;
     private final StoreImageUrlResolver storeImageUrlResolver;
+    private final GuestOrderTokens guestOrderTokens;
 
     public MarketplaceController(
             ServiceClientFactory clientFactory,
             UserServiceClient userServiceClient,
             ProductImageUrlResolver productImageUrlResolver,
-            StoreImageUrlResolver storeImageUrlResolver) {
+            StoreImageUrlResolver storeImageUrlResolver,
+            GuestOrderTokens guestOrderTokens) {
         this.productClient = clientFactory.forService("product", "/api/v1/marketplace");
         this.storeClient = clientFactory.forService("store", "/api/v1/stores");
         this.businessClient = clientFactory.forService("business", "/api/v1/businesses");
@@ -107,6 +126,7 @@ public class MarketplaceController {
         this.userServiceClient = userServiceClient;
         this.productImageUrlResolver = productImageUrlResolver;
         this.storeImageUrlResolver = storeImageUrlResolver;
+        this.guestOrderTokens = guestOrderTokens;
     }
 
     @GetMapping("/categories")
@@ -382,9 +402,20 @@ public class MarketplaceController {
     @PostMapping("/checkout/delivery-quotes")
     public Mono<ResponseEntity<ApiResponse<List<MarketplaceDeliveryQuoteResponse>>>> createDeliveryQuotes(
             @jakarta.validation.Valid @RequestBody MarketplaceDeliveryQuoteRequest request) {
-        return currentCustomerId().then(publicStore(request.storeId()).then(deliveryClient.post().uri("/quotes")
+        return currentCustomerId().then(deliveryQuotes(request));
+    }
+
+    @PostMapping("/guest/checkout/delivery-quotes")
+    public Mono<ResponseEntity<ApiResponse<List<MarketplaceDeliveryQuoteResponse>>>> createGuestDeliveryQuotes(
+            @jakarta.validation.Valid @RequestBody MarketplaceDeliveryQuoteRequest request) {
+        return deliveryQuotes(request);
+    }
+
+    private Mono<ResponseEntity<ApiResponse<List<MarketplaceDeliveryQuoteResponse>>>> deliveryQuotes(
+            MarketplaceDeliveryQuoteRequest request) {
+        return publicStore(request.storeId()).then(deliveryClient.post().uri("/quotes")
                         .bodyValue(request).retrieve().bodyToMono(QUOTES_TYPE))
-                .map(response -> ResponseEntity.status(HttpStatus.CREATED).body(response)));
+                .map(response -> ResponseEntity.status(HttpStatus.CREATED).body(response));
     }
 
     @PostMapping("/checkout/orders")
@@ -421,23 +452,151 @@ public class MarketplaceController {
 
     @PostMapping("/orders/{orderId}/payment/qr")
     public Mono<ResponseEntity<ApiResponse<JsonNode>>> createOrderQrPayment(@PathVariable @Positive Long orderId) {
-        return currentCustomerId().flatMap(userId -> verifyCustomerOrder(userId, orderId).flatMap(order -> {
-            if (!"UNPAID".equals(order.path("paymentStatus").asText())) {
-                return Mono.error(new org.springframework.web.server.ResponseStatusException(
-                        HttpStatus.CONFLICT, "This order is not awaiting QR payment"));
+        return currentCustomerId().flatMap(userId -> verifyCustomerOrder(userId, orderId)
+                        .flatMap(order -> createQrPayment(order, orderId, "marketplace-qr-" + userId + "-" + orderId)))
+                .map(ResponseEntity::ok);
+    }
+
+    // ---- Guest checkout: no account; the cart lives in the browser and a signed token unlocks the order ----
+
+    @PostMapping("/guest/checkout/orders")
+    public Mono<ResponseEntity<ApiResponse<MarketplaceGuestOrderResponse>>> guestCheckout(
+            @jakarta.validation.Valid @RequestBody MarketplaceGuestCheckoutRequest request) {
+        if (!"CUSTOMER_PICKUP".equals(request.fulfillmentType())
+                && (request.deliveryQuoteId() == null || request.deliveryAddress() == null)) {
+            return Mono.error(status(HttpStatus.BAD_REQUEST, "Delivery quote and address are required for delivery"));
+        }
+        Map<Long, MarketplaceGuestCheckoutRequest.Item> lines = new LinkedHashMap<>();
+        for (MarketplaceGuestCheckoutRequest.Item item : request.items()) {
+            MarketplaceGuestCheckoutRequest.Item merged = lines.merge(item.variantId(), item, (left, right) ->
+                    new MarketplaceGuestCheckoutRequest.Item(left.productId(), left.variantId(), left.quantity() + right.quantity()));
+            if (merged.quantity() > 999) {
+                return Mono.error(status(HttpStatus.BAD_REQUEST, "Quantity cannot exceed 999"));
             }
-            String currency = order.path("currencyCode").asText("");
-            if (!"USD".equalsIgnoreCase(currency)) {
-                return Mono.error(new org.springframework.web.server.ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "QR checkout currently supports USD orders only"));
+        }
+        List<Long> productIds = lines.values().stream()
+                .map(MarketplaceGuestCheckoutRequest.Item::productId).distinct().toList();
+        return publicStore(request.storeId()).flatMap(store -> {
+            if (store.businessId() == null) {
+                return Mono.error(status(HttpStatus.CONFLICT, "Store is missing its business account"));
             }
-            QrPaymentPayload payload = new QrPaymentPayload(
-                    orderId, order.path("businessId").asLong(), order.path("storeId").asLong(),
-                    order.path("grandTotal").decimalValue(), currency,
-                    "marketplace-qr-" + userId + "-" + orderId,
-                    "Marketplace order " + order.path("orderNo").asText(), null);
-            return paymentClient.post().uri("/qr").bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE);
-        })).map(ResponseEntity::ok);
+            return Flux.fromIterable(productIds)
+                    .flatMap(productId -> fetchProductDetail(productId, request.storeId()), 8)
+                    .collectMap(MarketplaceProductDetailResponse::productId)
+                    .flatMap(products -> placeGuestOrder(request, store, lines, products));
+        });
+    }
+
+    @GetMapping("/guest/orders/{orderId}")
+    public Mono<ResponseEntity<ApiResponse<JsonNode>>> getGuestOrder(
+            @PathVariable @Positive Long orderId,
+            @RequestHeader(value = GUEST_TOKEN_HEADER, required = false) String token) {
+        return verifyGuestOrder(orderId, token)
+                .map(order -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), order)));
+    }
+
+    @GetMapping("/guest/orders/{orderId}/payments")
+    public Mono<ResponseEntity<ApiResponse<List<JsonNode>>>> getGuestOrderPayments(
+            @PathVariable @Positive Long orderId,
+            @RequestHeader(value = GUEST_TOKEN_HEADER, required = false) String token) {
+        return verifyGuestOrder(orderId, token)
+                .then(paymentClient.get().uri(uri -> uri.queryParam("orderId", orderId).build())
+                        .retrieve().bodyToMono(PAYMENT_LIST_TYPE))
+                .map(ResponseEntity::ok);
+    }
+
+    @PostMapping("/guest/orders/{orderId}/payment/qr")
+    public Mono<ResponseEntity<ApiResponse<JsonNode>>> createGuestOrderQrPayment(
+            @PathVariable @Positive Long orderId,
+            @RequestHeader(value = GUEST_TOKEN_HEADER, required = false) String token) {
+        return verifyGuestOrder(orderId, token)
+                .flatMap(order -> createQrPayment(order, orderId, "marketplace-qr-guest-" + orderId))
+                .map(ResponseEntity::ok);
+    }
+
+    private Mono<ResponseEntity<ApiResponse<MarketplaceGuestOrderResponse>>> placeGuestOrder(
+            MarketplaceGuestCheckoutRequest request,
+            MarketplaceStoreResponse store,
+            Map<Long, MarketplaceGuestCheckoutRequest.Item> lines,
+            Map<Long, MarketplaceProductDetailResponse> products) {
+        Set<String> currencies = new HashSet<>();
+        List<OnlineOrderItemPayload> items = new ArrayList<>();
+        for (MarketplaceGuestCheckoutRequest.Item line : lines.values()) {
+            MarketplaceProductDetailResponse product = products.get(line.productId());
+            if (product == null || !request.storeId().equals(product.storeId())) {
+                return Mono.error(status(HttpStatus.BAD_REQUEST, "A product in the cart is not sold by this store"));
+            }
+            MarketplaceProductDetailResponse.Variant variant = product.variants() == null ? null : product.variants().stream()
+                    .filter(candidate -> candidate.variantId().equals(line.variantId())).findFirst().orElse(null);
+            if (variant == null) {
+                return Mono.error(status(HttpStatus.BAD_REQUEST, product.productName() + " is no longer available in that option"));
+            }
+            if (!variant.inStock() || (variant.quantity() != null && line.quantity() > variant.quantity())) {
+                return Mono.error(status(HttpStatus.CONFLICT, product.productName() + " does not have enough stock"));
+            }
+            if (product.currencyCode() != null) currencies.add(product.currencyCode().toUpperCase(Locale.ROOT));
+            items.add(new OnlineOrderItemPayload(line.variantId(), line.quantity()));
+        }
+        if (currencies.size() != 1) {
+            return Mono.error(status(HttpStatus.CONFLICT, "An order can contain products in one currency only"));
+        }
+        String currency = currencies.iterator().next();
+        if ("QR".equals(request.paymentType()) && !"USD".equals(currency)) {
+            return Mono.error(status(HttpStatus.BAD_REQUEST, "QR checkout currently supports USD orders only"));
+        }
+        // The client's key is bound to the store and phone, so replaying someone else's key cannot return their order.
+        String key = "marketplace-guest-" + sha256Hex(request.storeId() + "|"
+                + request.contactPhone().replaceAll("[^0-9+]", "") + "|" + request.idempotencyKey()).substring(0, 40);
+        OnlineOrderPayload payload = new OnlineOrderPayload(
+                store.businessId(), request.storeId(), null, request.contactName().trim(), request.contactPhone().trim(),
+                currency, request.fulfillmentType(), request.paymentType(), request.deliveryQuoteId(),
+                request.deliveryAddress(), request.discountCode(), null, request.note(), key, items);
+        return orderClient.post().uri("/online").bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE)
+                .map(ApiResponse::getData)
+                .map(order -> ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
+                        HttpStatus.CREATED.value(),
+                        new MarketplaceGuestOrderResponse(order, guestOrderTokens.issue(order.path("id").asLong())))));
+    }
+
+    /** A guest order is readable only with its token, and only while no customer account is attached to it. */
+    private Mono<JsonNode> verifyGuestOrder(Long orderId, String token) {
+        if (!guestOrderTokens.verify(orderId, token)) {
+            return Mono.error(status(HttpStatus.NOT_FOUND, "Order not found"));
+        }
+        return orderClient.get().uri("/{id}", orderId)
+                .retrieve().bodyToMono(ORDER_TYPE)
+                .map(ApiResponse::getData)
+                .filter(order -> (order.path("customerId").isNull() || order.path("customerId").isMissingNode())
+                        && "ONLINE".equals(order.path("orderChannel").asText()))
+                .switchIfEmpty(Mono.error(status(HttpStatus.NOT_FOUND, "Order not found")));
+    }
+
+    private Mono<ApiResponse<JsonNode>> createQrPayment(JsonNode order, Long orderId, String idempotencyKey) {
+        if (!"UNPAID".equals(order.path("paymentStatus").asText())) {
+            return Mono.error(status(HttpStatus.CONFLICT, "This order is not awaiting QR payment"));
+        }
+        String currency = order.path("currencyCode").asText("");
+        if (!"USD".equalsIgnoreCase(currency)) {
+            return Mono.error(status(HttpStatus.BAD_REQUEST, "QR checkout currently supports USD orders only"));
+        }
+        QrPaymentPayload payload = new QrPaymentPayload(
+                orderId, order.path("businessId").asLong(), order.path("storeId").asLong(),
+                order.path("grandTotal").decimalValue(), currency, idempotencyKey,
+                "Marketplace order " + order.path("orderNo").asText(), null);
+        return paymentClient.post().uri("/qr").bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE);
+    }
+
+    private static ResponseStatusException status(HttpStatus status, String message) {
+        return new ResponseStatusException(status, message);
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     private Mono<UserContext> currentUser() {
@@ -610,7 +769,8 @@ public class MarketplaceController {
                         .map(item -> new OnlineOrderItemPayload(item.variantId(), item.quantity())).toList();
                 String key = "marketplace-" + userId + "-" + request.idempotencyKey();
                 OnlineOrderPayload payload = new OnlineOrderPayload(
-                        store.businessId(), request.storeId(), userId, currencies.iterator().next(),
+                        store.businessId(), request.storeId(), userId, trimToNull(request.contactName()),
+                        trimToNull(request.contactPhone()), currencies.iterator().next(),
                         request.fulfillmentType(), request.paymentType(), request.deliveryQuoteId(),
                         request.deliveryAddress(), request.discountCode(), null, request.note(), key, items);
                 return orderClient.post().uri("/online").bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE)
@@ -724,10 +884,16 @@ public class MarketplaceController {
     private record OnlineOrderItemPayload(Long variantId, Integer quantity) {
     }
 
+    private static String trimToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     private record OnlineOrderPayload(
             Long businessId,
             Long storeId,
             Long customerId,
+            String contactName,
+            String contactPhone,
             String currencyCode,
             String fulfillmentType,
             String paymentType,
