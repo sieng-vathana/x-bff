@@ -19,7 +19,7 @@ public record MarketplaceGuestCheckoutRequest(
         @NotNull @Positive Long storeId,
         @NotEmpty @Size(max = 50) List<@Valid Item> items,
         @NotBlank @Size(max = 160) String contactName,
-        @NotBlank @Pattern(regexp = "\+?[0-9 ()-]{6,32}", message = "Enter a valid phone number") String contactPhone,
+        @NotBlank @Pattern(regexp = "\\+?[0-9 ()-]{6,32}", message = "Enter a valid phone number") String contactPhone,
         @NotBlank @Pattern(regexp = "CUSTOMER_PICKUP|OWN_RIDER|THIRD_PARTY") String fulfillmentType,
         @NotBlank @Pattern(regexp = "COD|QR") String paymentType,
         @Positive Long deliveryQuoteId,
