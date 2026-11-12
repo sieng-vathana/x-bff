@@ -576,14 +576,29 @@ public class MarketplaceController {
             return Mono.error(status(HttpStatus.CONFLICT, "This order is not awaiting QR payment"));
         }
         String currency = order.path("currencyCode").asText("");
-        if (!"USD".equalsIgnoreCase(currency)) {
-            return Mono.error(status(HttpStatus.BAD_REQUEST, "QR checkout currently supports USD orders only"));
+        if (!"USD".equalsIgnoreCase(currency) && !"KHR".equalsIgnoreCase(currency)) {
+            return Mono.error(status(HttpStatus.BAD_REQUEST, "KHQR supports only USD and KHR orders"));
         }
-        QrPaymentPayload payload = new QrPaymentPayload(
-                orderId, order.path("businessId").asLong(), order.path("storeId").asLong(),
-                order.path("grandTotal").decimalValue(), currency, idempotencyKey,
-                "Marketplace order " + order.path("orderNo").asText(), null);
-        return paymentClient.post().uri("/qr").bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE);
+        long businessId = order.path("businessId").asLong();
+        // Bakong KHQR, as on the POS: paid straight into the merchant's own Bakong account, in USD or riel.
+        return businessClient.get().uri("/{id}", businessId).retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ApiResponse<com.x.bff.dto.BusinessResponse>>() {})
+                .mapNotNull(ApiResponse::getData)
+                .switchIfEmpty(Mono.error(status(HttpStatus.CONFLICT, "The store's business account was not found")))
+                .flatMap(business -> {
+                    String account = business.bakongAccountId();
+                    if (account == null || account.isBlank()) {
+                        return Mono.error(status(HttpStatus.CONFLICT,
+                                "This store does not take KHQR yet. Please choose cash instead."));
+                    }
+                    String orderNo = order.path("orderNo").asText("");
+                    BakongQrPaymentPayload payload = new BakongQrPaymentPayload(
+                            orderId, businessId, order.path("storeId").asLong(),
+                            order.path("grandTotal").decimalValue(), currency, idempotencyKey,
+                            "Marketplace order " + orderNo, null, account.trim(), business.name(),
+                            orderNo.isBlank() ? null : orderNo.substring(0, Math.min(25, orderNo.length())));
+                    return paymentClient.post().uri("/bakong-qr").bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE);
+                });
     }
 
     private static ResponseStatusException status(HttpStatus status, String message) {
@@ -906,7 +921,7 @@ public class MarketplaceController {
             List<OnlineOrderItemPayload> items) {
     }
 
-    private record QrPaymentPayload(
+    private record BakongQrPaymentPayload(
             Long orderId,
             Long businessId,
             Long storeId,
@@ -914,6 +929,9 @@ public class MarketplaceController {
             String currencyCode,
             String idempotencyKey,
             String note,
-            Long cashierId) {
+            Long cashierId,
+            String bakongAccountId,
+            String merchantName,
+            String billNumber) {
     }
 }
