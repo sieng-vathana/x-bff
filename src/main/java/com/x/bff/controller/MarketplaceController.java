@@ -541,8 +541,8 @@ public class MarketplaceController {
             return Mono.error(status(HttpStatus.CONFLICT, "An order can contain products in one currency only"));
         }
         String currency = currencies.iterator().next();
-        if ("QR".equals(request.paymentType()) && !"USD".equals(currency)) {
-            return Mono.error(status(HttpStatus.BAD_REQUEST, "QR checkout currently supports USD orders only"));
+        if ("QR".equals(request.paymentType()) && !"USD".equals(currency) && !"KHR".equals(currency)) {
+            return Mono.error(status(HttpStatus.BAD_REQUEST, "KHQR supports only USD and KHR orders"));
         }
         // The client's key is bound to the store and phone, so replaying someone else's key cannot return their order.
         String key = "marketplace-guest-" + sha256Hex(request.storeId() + "|"
@@ -771,9 +771,10 @@ public class MarketplaceController {
                 return Mono.error(new org.springframework.web.server.ResponseStatusException(
                         HttpStatus.CONFLICT, "Cart items for a store must use one currency"));
             }
-            if ("QR".equals(request.paymentType()) && !"USD".equalsIgnoreCase(currencies.iterator().next())) {
+            String orderCurrency = currencies.iterator().next();
+            if ("QR".equals(request.paymentType()) && !"USD".equals(orderCurrency) && !"KHR".equals(orderCurrency)) {
                 return Mono.error(new org.springframework.web.server.ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "QR checkout currently supports USD orders only"));
+                        HttpStatus.BAD_REQUEST, "KHQR supports only USD and KHR orders"));
             }
             return publicStore(request.storeId()).flatMap(store -> {
                 if (store.businessId() == null) {
