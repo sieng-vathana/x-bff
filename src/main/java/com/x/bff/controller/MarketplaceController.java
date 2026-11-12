@@ -289,10 +289,7 @@ public class MarketplaceController {
                 .retrieve()
                 .bodyToMono(STORE_PAGE_TYPE)
                 .map(ApiResponse::getData)
-                .flatMap(pageData -> withoutSuspendedMerchants(pageData.content())
-                        .flatMap(storeImageUrlResolver::resolveMarketplaceStores)
-                        .map(visible -> new PageResponse<>(visible, pageData.page(), pageData.size(),
-                                pageData.totalElements(), pageData.totalPages(), pageData.hasNext())));
+                .flatMap(this::enrichStorePage);
         return Mono.zip(products, featuredProducts, categories, user, summary, directory)
                 .flatMap(tuple -> loadStores(java.util.stream.Stream.concat(
                                 tuple.getT1().content().stream(), tuple.getT2().content().stream())
@@ -749,8 +746,18 @@ public class MarketplaceController {
             PageResponse<MarketplaceStoreResponse> page) {
         return withoutSuspendedMerchants(page.content())
                 .flatMap(storeImageUrlResolver::resolveMarketplaceStores)
-                .map(visible -> new PageResponse<>(visible, page.page(), page.size(), page.totalElements(),
+                .map(visible -> new PageResponse<>(visible, page.page(), page.size(), visibleTotal(page, visible.size()),
                         page.totalPages(), page.hasNext()));
+    }
+
+    /**
+     * The store and product services count every approved store and product, but stores of suspended merchants
+     * and merchants without the marketplace plan are hidden here. The total leaves out what this page hid, so a
+     * one-page result (the usual case) reports exactly what the shopper sees.
+     */
+    private static long visibleTotal(PageResponse<?> page, int shown) {
+        int hidden = page.content().size() - shown;
+        return Math.max(shown, page.totalElements() - hidden);
     }
 
     private MarketplaceHomeResponse.CartSummary toCartSummary(MarketplaceSummaryResponse summary) {
@@ -881,16 +888,16 @@ public class MarketplaceController {
     private PageResponse<MarketplaceProductView> toProductViews(
             PageResponse<MarketplaceProductResponse> products,
             Map<Long, MarketplaceStoreResponse> storesById) {
-        return new PageResponse<>(
-                products.content().stream()
-                        .filter(product -> storesById.containsKey(product.storeId()))
-                        .map(product -> new MarketplaceProductView(
-                                product.productId(), product.productName(), product.shortName(), product.thumbnail(),
-                                product.description(), product.categoryId(), product.categoryName(), product.currencyCode(),
-                                product.onlinePrice(), product.compareAtPrice(), product.quantity(), product.featured(),
-                                storesById.get(product.storeId())))
-                        .toList(),
-                products.page(), products.size(), products.totalElements(), products.totalPages(), products.hasNext());
+        List<MarketplaceProductView> views = products.content().stream()
+                .filter(product -> storesById.containsKey(product.storeId()))
+                .map(product -> new MarketplaceProductView(
+                        product.productId(), product.productName(), product.shortName(), product.thumbnail(),
+                        product.description(), product.categoryId(), product.categoryName(), product.currencyCode(),
+                        product.onlinePrice(), product.compareAtPrice(), product.quantity(), product.featured(),
+                        storesById.get(product.storeId())))
+                .toList();
+        return new PageResponse<>(views, products.page(), products.size(), visibleTotal(products, views.size()),
+                products.totalPages(), products.hasNext());
     }
 
     private MarketplaceSummaryResponse emptySummary() {
