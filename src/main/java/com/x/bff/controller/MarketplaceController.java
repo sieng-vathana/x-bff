@@ -70,6 +70,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/v1/marketplace")
 @Validated
 public class MarketplaceController {
+    private static final String GUEST_SERVICE_USER = "marketplace-guest-checkout";
     /** Header carrying the access token a guest got back from checkout. */
     public static final String GUEST_TOKEN_HEADER = "X-Guest-Order-Token";
 
@@ -106,6 +107,7 @@ public class MarketplaceController {
     private final WebClient orderClient;
     private final WebClient paymentClient;
     private final UserServiceClient userServiceClient;
+    private final com.x.bff.security.JwtUtils jwtUtils;
     private final ProductImageUrlResolver productImageUrlResolver;
     private final StoreImageUrlResolver storeImageUrlResolver;
     private final GuestOrderTokens guestOrderTokens;
@@ -115,7 +117,8 @@ public class MarketplaceController {
             UserServiceClient userServiceClient,
             ProductImageUrlResolver productImageUrlResolver,
             StoreImageUrlResolver storeImageUrlResolver,
-            GuestOrderTokens guestOrderTokens) {
+            GuestOrderTokens guestOrderTokens,
+            com.x.bff.security.JwtUtils jwtUtils) {
         this.productClient = clientFactory.forService("product", "/api/v1/marketplace");
         this.storeClient = clientFactory.forService("store", "/api/v1/stores");
         this.businessClient = clientFactory.forService("business", "/api/v1/businesses");
@@ -127,6 +130,7 @@ public class MarketplaceController {
         this.productImageUrlResolver = productImageUrlResolver;
         this.storeImageUrlResolver = storeImageUrlResolver;
         this.guestOrderTokens = guestOrderTokens;
+        this.jwtUtils = jwtUtils;
     }
 
     @GetMapping("/categories")
@@ -551,7 +555,11 @@ public class MarketplaceController {
                 store.businessId(), request.storeId(), null, request.contactName().trim(), request.contactPhone().trim(),
                 currency, request.fulfillmentType(), request.paymentType(), request.deliveryQuoteId(),
                 request.deliveryAddress(), request.discountCode(), null, request.note(), key, items);
-        return orderClient.post().uri("/online").bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE)
+        // A guest has no session to pass on, but the order service reads prices from the product service, which
+        // needs a signed caller. A short service token for the marketplace stands in for the guest.
+        return orderClient.post().uri("/online")
+                .headers(headers -> headers.setBearerAuth(jwtUtils.generateToken(GUEST_SERVICE_USER, Set.of())))
+                .bodyValue(payload).retrieve().bodyToMono(ORDER_TYPE)
                 .map(ApiResponse::getData)
                 .map(order -> ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
                         HttpStatus.CREATED.value(),
